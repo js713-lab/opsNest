@@ -95,7 +95,7 @@ export async function testCodeRabbitConnection(apiKey?: string, baseUrl?: string
       if (primaryErr?.message?.includes('Invalid date')) {
         // Retry with date-only strings to satisfy stricter parsers.
         const response = await attempt(toDateOnly(sixHoursAgo), toDateOnly(now));
-        return { ok: true, response };
+    return { ok: true, response };
       }
       throw primaryErr;
     }

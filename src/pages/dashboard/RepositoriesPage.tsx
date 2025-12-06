@@ -2,14 +2,20 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { fetchGithubRepos, getGithubToken, GithubRepo } from '@/lib/github';
-import { supabase } from '@/lib/supabase';
-import { Loader2, RefreshCw, ExternalLink } from 'lucide-react';
+import { supabase, listProjects, Project, listIndexJobs, IndexJob } from '@/lib/supabase';
+import { Loader2, RefreshCw, ExternalLink, Search, CheckCircle2, Loader, Clock } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 type TokenSource = 'local' | 'supabase' | null;
+type RepoStatus = 'linked' | 'indexing' | 'not_linked';
+
+interface EnhancedRepo extends GithubRepo {
+  project?: Project;
+  latestIndexJob?: IndexJob;
+}
 
 const RepositoriesPage = () => {
-  const [repos, setRepos] = useState<GithubRepo[]>([]);
+  const [repos, setRepos] = useState<EnhancedRepo[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState<string>('');
@@ -43,8 +49,29 @@ const RepositoriesPage = () => {
         return;
       }
 
-      const list = await fetchGithubRepos(token);
-      setRepos(list);
+      const [githubList, projects] = await Promise.all([
+        fetchGithubRepos(token),
+        listProjects()
+      ]);
+
+      // Determine linking status and fetch index jobs for linked projects
+      const enhancedRepos: EnhancedRepo[] = await Promise.all(githubList.map(async (repo) => {
+        const project = projects.find(p => p.repository_url === repo.html_url);
+        let latestIndexJob: IndexJob | undefined;
+        
+        if (project) {
+           const jobs = await listIndexJobs(project.id);
+           latestIndexJob = jobs[0]; // Assuming order by created_at desc
+        }
+
+        return {
+          ...repo,
+          project,
+          latestIndexJob
+        };
+      }));
+
+      setRepos(enhancedRepos);
       setTokenSource(source);
     } catch (err: any) {
       setError(err?.message || 'Failed to load repositories');
@@ -63,6 +90,23 @@ const RepositoriesPage = () => {
     if (!q) return repos;
     return repos.filter((r) => r.name.toLowerCase().includes(q) || r.full_name.toLowerCase().includes(q));
   }, [repos, search]);
+
+  const getIndexingStatus = (repo: EnhancedRepo) => {
+    if (!repo.project) return null;
+    if (repo.latestIndexJob?.status === 'running') {
+       return <span className="flex items-center gap-1 text-blue-600"><Loader size={12} className="animate-spin" /> Indexing</span>;
+    }
+    if (repo.latestIndexJob?.status === 'completed') {
+       return <span className="flex items-center gap-1 text-emerald-600"><CheckCircle2 size={12} /> Indexed</span>;
+    }
+    if (repo.latestIndexJob?.status === 'failed') {
+       return <span className="flex items-center gap-1 text-red-600"><Clock size={12} /> Index Failed</span>;
+    }
+    if (repo.project.status === 'ACTIVE') {
+       return <span className="flex items-center gap-1 text-emerald-600"><CheckCircle2 size={12} /> Active</span>;
+    }
+    return <span className="flex items-center gap-1 text-muted-foreground"><Clock size={12} /> {repo.project.status.toLowerCase()}</span>;
+  };
 
   return (
     <div className="space-y-6">
@@ -88,14 +132,14 @@ const RepositoriesPage = () => {
 
       <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between bg-card p-4 rounded-lg border border-border shadow-sm">
         <div className="relative w-full sm:w-96">
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
             type="search"
             placeholder="Search repositories..."
-            className="pl-10"
+            className="pl-9"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
-          <span className="absolute left-3 top-2.5 text-muted-foreground text-xs">🔍</span>
         </div>
         <div className="text-xs text-muted-foreground">
           {loading ? 'Loading repositories...' : `${filtered.length} repo${filtered.length === 1 ? '' : 's'}`}
@@ -124,7 +168,18 @@ const RepositoriesPage = () => {
           <div key={repo.id} className="border border-border rounded-lg p-4 bg-card shadow-sm space-y-2">
             <div className="flex items-center justify-between gap-2">
               <div className="space-y-1">
-                <div className="font-semibold text-base">{repo.name}</div>
+                <div className="flex items-center gap-2">
+                  <div className="font-semibold text-base">{repo.name}</div>
+                  {repo.project ? (
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200">
+                      Linked
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                      Not Linked
+                    </span>
+                  )}
+                </div>
                 <div className="text-xs text-muted-foreground">{repo.full_name}</div>
               </div>
               <a
@@ -141,6 +196,12 @@ const RepositoriesPage = () => {
               <span>Default branch: {repo.default_branch}</span>
               <span>Owner: {repo.owner?.login}</span>
             </div>
+            {repo.project && (
+               <div className="pt-2 border-t border-border mt-2 text-xs flex items-center justify-between">
+                  <span className="text-muted-foreground">Indexing Progress:</span>
+                  {getIndexingStatus(repo)}
+               </div>
+            )}
           </div>
         ))}
       </div>
@@ -149,4 +210,5 @@ const RepositoriesPage = () => {
 };
 
 export default RepositoriesPage;
+
 

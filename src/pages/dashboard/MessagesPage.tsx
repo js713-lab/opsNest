@@ -261,9 +261,9 @@ const MessagesPage = () => {
                     {selectedThread.severity}
                   </span>
                 </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="text-lg font-semibold leading-tight flex-1">{selectedThread.title}</h2>
-                  </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-lg font-semibold leading-tight flex-1">{selectedThread.title}</h2>
+                </div>
                 <p className="text-xs text-muted-foreground">Owner: {selectedThread.owner}</p>
               </div>
 

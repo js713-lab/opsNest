@@ -483,7 +483,7 @@ const IntegrationsPage = () => {
          <div className="space-y-6">
             <div className="space-y-4">
                {/* Show credential environment toggles only where it makes sense */}
-               {selectedIntegration && !['smtp', 'coderabbit', 'gemini'].includes(selectedIntegration.id) && (
+               {selectedIntegration && !['smtp', 'coderabbit', 'gemini', 'anthropic'].includes(selectedIntegration.id) && (
                  <>
                <h4 className="text-sm font-medium">Credential Type <span className="text-red-500">*</span></h4>
                
