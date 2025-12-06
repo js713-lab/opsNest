@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/Button';
-import { Moon, Sun, Workflow, CheckCircle2, Bot, Menu, X } from 'lucide-react';
+import { Moon, Sun, Workflow, CheckCircle2, Bot, Menu, X, ArrowRight, LineChart, BadgePercent, CreditCard, Wallet, Link as LinkIcon } from 'lucide-react';
 import { supabase, submitContactForm, submitSubscription } from '@/lib/supabase';
 import { User } from '@supabase/supabase-js';
 import FaultyTerminal from '@/components/ui/FaultyTerminal';
@@ -12,6 +12,25 @@ const heroPrompts = [
   'systems that do the work for me',
   'dashboards in minutes',
   'pipelines without babysitting',
+];
+
+const sdlcBalls = [
+  { lineGradient: 'from-fuchsia-400 via-pink-500 to-purple-600', glow: 'rgba(236,72,153,0.45)' },
+  { lineGradient: 'from-amber-300 via-yellow-400 to-orange-500', glow: 'rgba(251,191,36,0.45)' },
+  { lineGradient: 'from-lime-300 via-green-400 to-emerald-500', glow: 'rgba(132,204,22,0.45)' },
+  { lineGradient: 'from-cyan-300 via-sky-400 to-blue-500', glow: 'rgba(56,189,248,0.45)' },
+  { lineGradient: 'from-blue-400 via-indigo-500 to-purple-600', glow: 'rgba(99,102,241,0.45)' },
+  { lineGradient: 'from-rose-300 via-red-400 to-orange-500', glow: 'rgba(248,113,113,0.45)' },
+  { lineGradient: 'from-slate-200 via-slate-100 to-white', glow: 'rgba(241,245,249,0.45)' },
+];
+
+const featureCards = [
+  { title: 'GitHub OAuth, repo linking, issues' },
+  { title: 'Codebase indexing & route detection' },
+  { title: 'Cron jobs for tests, reviews, scans' },
+  { title: 'Test → Bug cards → Quote marketplace' },
+  { title: 'Slack + CodeRabbit + Anthropic hooks' },
+  { title: 'Auto-generated build/test/deploy scripts' },
 ];
 
 const LandingPage = () => {
@@ -199,6 +218,12 @@ const LandingPage = () => {
 
   return (
     <div className="bg-slate-100 flex flex-col relative overflow-x-hidden transition-colors duration-300 font-mono text-white scroll-smooth pt-20">
+      <style>{`
+        @keyframes sdlc-rotate {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
       {/* Full Screen Hero Background with FaultyTerminal + Fallback */}
       <div
         className={`fixed inset-0 z-0 pointer-events-none transition-opacity duration-500 ${showHeroBg ? 'opacity-100' : 'opacity-0'}`}
@@ -444,67 +469,186 @@ const LandingPage = () => {
         
         {/* Section 2: Visual SDLC */}
         <section id="about" className="min-h-screen flex flex-col items-center justify-center px-6 md:px-12 lg:px-24 py-20 border-b border-slate-100 bg-white reveal" ref={setRevealRef}>
-          <div className="w-full max-w-6xl grid gap-10 lg:grid-cols-3 items-center text-center lg:text-left">
-            <div className="lg:col-span-2 space-y-6 lg:pr-6">
-              <p className="text-sm uppercase tracking-[0.25em] text-slate-500 font-bold">Visual SDLC</p>
-              <h2 className="text-4xl md:text-5xl font-bold leading-tight">Plan → Design → Code → Build → Test → Deploy → Monitor</h2>
-              <p className="text-slate-600 text-lg leading-relaxed max-w-2xl">
-                Keep the full lifecycle in view. OpsNest plots every run, approval, and script so you always know what’s green, what’s blocked, and what shipped.
-              </p>
-              <div className="grid grid-cols-2 gap-4 text-sm text-slate-700 mt-8">
-                <div className="rounded-lg border border-slate-200 p-4 bg-slate-50 shadow-sm hover:shadow-md transition-shadow">Stage statuses + approvals</div>
-                <div className="rounded-lg border border-slate-200 p-4 bg-slate-50 shadow-sm hover:shadow-md transition-shadow">Attached scripts per stage</div>
-                <div className="rounded-lg border border-slate-200 p-4 bg-slate-50 shadow-sm hover:shadow-md transition-shadow">Real-time deploy/test signals</div>
-                <div className="rounded-lg border border-slate-200 p-4 bg-slate-50 shadow-sm hover:shadow-md transition-shadow">Monitor health after ship</div>
+          <div className="w-full max-w-6xl space-y-6">
+            <div className="grid gap-12 lg:grid-cols-[1.1fr_0.9fr] items-start text-center lg:text-left">
+              <div className="space-y-6 lg:pr-6">
+                <p className="text-sm uppercase tracking-[0.25em] text-slate-500 font-bold">Visual SDLC</p>
+                <h2 className="sr-only">Plan → Design → Code → Build → Test → Deploy → Monitor</h2>
+                <div className="flex justify-center lg:justify-start">
+                  <div
+                    className="relative w-[320px] h-[320px] md:w-[380px] md:h-[380px]"
+                    style={{ animation: 'sdlc-rotate 18s linear infinite' }}
+                  >
+                    {sdlcBalls.map((ball, idx) => {
+                      const angle = (idx / sdlcBalls.length) * 360;
+                      return (
+                        <div
+                          key={idx}
+                          className="absolute left-1/2 top-1/2"
+                          style={{ transform: `translate(-50%, -50%) rotate(${angle}deg) translateX(150px)` }}
+                        >
+                          <div
+                            className="relative w-16 h-16 md:w-20 md:h-20 rounded-full bg-slate-900/95 border border-white/10 shadow-[0_10px_30px_rgba(0,0,0,0.45)] overflow-hidden"
+                            style={{ boxShadow: `0 0 34px ${ball.glow}` }}
+                          >
+                            <div
+                              className="absolute inset-[10%] rounded-full"
+                              style={{
+                                background: 'radial-gradient(circle at 30% 30%, rgba(255,255,255,0.5), rgba(255,255,255,0.02) 45%, transparent 60%)',
+                                filter: 'blur(1px)',
+                              }}
+                            />
+                            <div
+                              className="absolute inset-0 rounded-full blur-[18px] opacity-70"
+                              style={{ background: `radial-gradient(circle, ${ball.glow} 0%, transparent 70%)` }}
+                            />
+                            <div
+                              className={`absolute left-1/2 top-1/2 w-[150%] h-[3px] md:h-[4px] origin-center -translate-x-1/2 -translate-y-1/2 rotate-[18deg] bg-gradient-to-r ${ball.lineGradient}`}
+                              style={{ boxShadow: `0 0 12px ${ball.glow}` }}
+                            />
+                            <div
+                              className="absolute inset-0 rounded-full"
+                              style={{
+                                background: 'radial-gradient(circle at 70% 70%, rgba(0,0,0,0), rgba(0,0,0,0.45) 55%, rgba(0,0,0,0.7) 75%)',
+                              }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4 text-sm text-slate-700 mt-8">
+                  <div className="rounded-none border border-slate-200 p-4 bg-slate-50 shadow-sm hover:shadow-md transition-shadow">Stage statuses + approvals</div>
+                  <div className="rounded-none border border-slate-200 p-4 bg-slate-50 shadow-sm hover:shadow-md transition-shadow">Attached scripts per stage</div>
+                  <div className="rounded-none border border-slate-200 p-4 bg-slate-50 shadow-sm hover:shadow-md transition-shadow">Real-time deploy/test signals</div>
+                  <div className="rounded-none border border-slate-200 p-4 bg-slate-50 shadow-sm hover:shadow-md transition-shadow">Monitor health after ship</div>
+                </div>
               </div>
-            </div>
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-8 space-y-6 shadow-lg h-fit mx-auto">
-              <h3 className="text-xl font-bold">Feature checklist</h3>
-              <ul className="space-y-3 text-slate-700 text-sm font-medium">
-                <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-primary" /> GitHub OAuth, repo linking, issues</li>
-                <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-primary" /> Codebase indexing & route detection</li>
-                <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-primary" /> Cron jobs for tests, reviews, scans</li>
-                <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-primary" /> Test → Bug cards → Quote marketplace</li>
-                <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-primary" /> Slack + CodeRabbit + Anthropic hooks</li>
-                <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-primary" /> Auto-generated build/test/deploy scripts</li>
-              </ul>
+              <div className="flex flex-col items-center lg:items-start w-full">
+                <div className="rounded-none border border-slate-200 bg-white p-6 md:p-8 space-y-6 shadow-lg h-auto mx-auto flex flex-col justify-center">
+                  <h3 className="text-2xl font-bold text-slate-900">Feature checklist</h3>
+                  <div className="overflow-x-auto pb-2 snap-x snap-mandatory">
+                    <div className="grid grid-rows-2 grid-flow-col auto-cols-[200px] md:auto-cols-[230px] gap-4">
+                      {featureCards.map((card, idx) => (
+                        <div
+                          key={card.title}
+                          className="relative rounded-none border border-slate-200 bg-gradient-to-br from-white via-white to-slate-50 shadow-[0_12px_28px_rgba(0,0,0,0.06)] px-5 py-5 flex flex-col gap-2 w-[200px] md:w-[230px] snap-start"
+                        >
+                          <div className="absolute top-3 right-3 text-[10px] font-semibold text-amber-700 bg-amber-100/70 rounded-full px-2 py-1">
+                            {idx + 1}
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <CheckCircle2 className="w-5 h-5 text-primary" />
+                            <div className="text-sm font-semibold text-slate-900 leading-snug">{card.title}</div>
+                          </div>
+                          <div className="text-[12px] text-slate-500 leading-snug">Included</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <p className="text-slate-600 text-xl md:text-2xl leading-[2.1] max-w-6xl mx-auto mt-8 text-center md:text-left">
+                  Keep the full lifecycle in view. OpsNest plots every run, approval, and script so you always know what’s green, what’s blocked, and what shipped.
+                </p>
+              </div>
             </div>
           </div>
         </section>
 
-        {/* Section 3: AI & Automation */}
+        {/* Section 3: Highlight Cards */}
         <section className="min-h-screen flex flex-col items-center justify-center px-6 md:px-12 lg:px-24 py-20 border-b border-slate-100 bg-slate-50 reveal" ref={setRevealRef}>
-          <div className="w-full max-w-6xl grid gap-12 lg:grid-cols-2 h-full items-center">
-            <div className="rounded-2xl border border-slate-200 bg-white p-8 space-y-6 shadow-xl transition-transform hover:-translate-y-1 duration-300 text-center lg:text-left">
-              <div className="h-12 w-12 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 mb-4">
-                <Bot size={24} />
+          <div className="w-full max-w-6xl grid gap-4 sm:gap-5 md:gap-6 xl:grid-cols-4 md:grid-cols-2 grid-cols-1 auto-rows-[1fr] items-stretch" ref={setRevealRef}>
+            <div className="rounded-none bg-slate-900 text-white p-6 flex flex-col justify-between shadow-xl border border-slate-800 transition-transform duration-500 hover:-translate-y-2">
+              <div className="flex items-center justify-between text-sm font-semibold">
+                <span>Reward Accounts</span>
+                <ArrowRight size={16} />
               </div>
-              <p className="text-sm uppercase tracking-[0.25em] text-slate-500 font-bold">AI-in-the-loop</p>
-              <h3 className="text-3xl font-bold">Anthropic + CodeRabbit where they matter</h3>
-              <p className="text-slate-600 text-base leading-relaxed">
-                Use Claude to explain failing logs, generate fixes, and draft missing tests. Pipe indexed summaries to CodeRabbit for PR-style reviews after each index job.
-              </p>
-              <ul className="text-slate-700 text-sm space-y-3 pt-2">
-                <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-indigo-500" /> Ask AI to summarize errors and propose patches</li>
-                <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-indigo-500" /> Auto-review after indexing to keep repos clean</li>
-                <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-indigo-500" /> One-click “Fix with AI” from Bug cards</li>
-              </ul>
+              <div className="text-5xl md:text-6xl font-black tracking-tight mt-4">2.5%</div>
+              <div className="text-xs uppercase tracking-[0.3em] mt-4 flex items-center justify-between">
+                <span>Earn as you spend</span>
+                <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-white text-slate-900">
+                  <ArrowRight size={12} />
+                </span>
+              </div>
             </div>
-            <div className="rounded-2xl border border-slate-200 bg-white p-8 space-y-6 shadow-xl transition-transform hover:-translate-y-1 duration-300 delay-100 text-center lg:text-left">
-              <div className="h-12 w-12 rounded-full bg-orange-100 flex items-center justify-center text-orange-600 mb-4">
-                <Workflow size={24} />
+
+            <div className="rounded-none bg-gradient-to-br from-white via-slate-100 to-slate-200 text-slate-900 p-0 overflow-hidden shadow-xl flex items-center justify-center border border-slate-200 transition-transform duration-500 hover:-translate-y-2">
+              <div className="w-full h-full flex items-center justify-center">
+                <div className="w-28 h-28 rounded-full bg-slate-900" />
               </div>
-              <p className="text-sm uppercase tracking-[0.25em] text-slate-500 font-bold">Automation</p>
-              <h3 className="text-3xl font-bold">Cron the boring stuff</h3>
-              <p className="text-slate-600 text-base leading-relaxed">
-                Schedule indexing, tests, bug scans, and AI reviews with human-readable cron previews. Ship without babysitting pipelines.
+            </div>
+
+            <div className="rounded-none bg-white text-slate-900 p-6 flex flex-col justify-between shadow-xl xl:col-span-2 border border-slate-200 transition-transform duration-500 hover:-translate-y-2">
+              <div className="flex items-center justify-between text-xs font-bold uppercase tracking-[0.25em]">
+                <span>Growth</span>
+                <span className="rounded-full bg-slate-900 text-white text-[10px] px-3 py-1">Growth</span>
+              </div>
+              <div className="text-5xl md:text-6xl font-black tracking-tight mt-4">8.10%</div>
+              <p className="text-lg font-semibold mt-2 mb-6">Extend your runway, earning.</p>
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-16 h-16 rounded-full bg-slate-900 flex items-center justify-center text-white shadow-lg border border-white/10">
+                  <Workflow size={22} />
+                </div>
+                <div className="w-16 h-16 rounded-full bg-slate-900 flex items-center justify-center text-white shadow-lg border border-white/10">
+                  <CreditCard size={22} />
+                </div>
+                <div className="w-16 h-16 rounded-full bg-slate-900 flex items-center justify-center text-white shadow-lg border border-white/10">
+                  <LinkIcon size={22} />
+                </div>
+              </div>
+              <div className="text-sm font-semibold border-t border-slate-900/20 pt-4 flex items-center justify-between">
+                <span>Safely invest cash in treasury bills</span>
+                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-slate-900 text-white">
+                  <ArrowRight size={14} />
+                </span>
+              </div>
+            </div>
+
+            <div className="rounded-none bg-slate-900 text-white p-6 flex flex-col justify-between shadow-xl xl:col-span-2 border border-slate-800 transition-transform duration-500 hover:-translate-y-2">
+              <div className="flex items-center justify-between text-sm font-semibold">
+                <span className="uppercase tracking-[0.2em] text-[12px]">AI-IN-THE-LOOP</span>
+                <span className="inline-flex items-center gap-1 text-xs font-semibold text-white">
+                  <BadgePercent size={14} />
+                </span>
+              </div>
+              <div className="text-4xl md:text-5xl font-black tracking-tight mt-2">Anthropic + CodeRabbit where they matter</div>
+              <div className="mt-4 h-20 w-full rounded-none bg-white/10 border border-white/20 shadow-inner relative overflow-hidden">
+                <div className="absolute inset-0 flex items-end px-4 gap-[3px]">
+                  {Array.from({ length: 60 }).map((_, i) => (
+                    <div
+                      key={i}
+                      className="w-[4px] bg-white/70 rounded-t"
+                      style={{ height: `${30 + (Math.sin(i / 3) + 1) * 15}%` }}
+                    />
+                  ))}
+                </div>
+              </div>
+              <div className="text-sm font-semibold border-t border-white/10 pt-4 flex items-center justify-between gap-2">
+                <span>Ask AI to summarize errors and propose patches</span>
+                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white text-slate-900">
+                  <ArrowRight size={14} />
+                </span>
+              </div>
+            </div>
+            <div className="rounded-none bg-white text-slate-900 p-6 flex flex-col justify-between shadow-xl xl:col-span-2 md:col-span-2 border border-slate-200 transition-transform duration-500 hover:-translate-y-2">
+              <div className="flex items-center justify-between text-xs font-bold uppercase tracking-[0.25em]">
+                <span>Runbooks</span>
+                <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-700 bg-white border border-slate-200 rounded-full px-3 py-1">
+                  <LineChart size={14} />
+                  Live
+                </span>
+              </div>
+              <div className="text-3xl md:text-4xl font-black tracking-tight mt-3">Ops control center</div>
+              <p className="text-sm md:text-base text-slate-700 mt-3 flex-1">
+                Triage, approvals, and SLOs in one pane with playbooks auto-suggested from prior incidents.
               </p>
-              <ul className="text-slate-700 text-sm space-y-3 pt-2">
-                <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-orange-500" /> Re-index repos on a schedule</li>
-                <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-orange-500" /> Run Playwright + Jest and capture reports</li>
-                <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-orange-500" /> Auto-create Bug cards from failures</li>
-                <li className="flex items-center gap-2"><CheckCircle2 className="w-4 h-4 text-orange-500" /> Notify Slack when tests fail or fixes merge</li>
-              </ul>
+              <div className="text-sm font-semibold border-t border-slate-200 pt-4 flex items-center justify-between">
+                <span>Cut MTTR with guided responses</span>
+                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-slate-900 text-white">
+                  <ArrowRight size={14} />
+                </span>
+              </div>
             </div>
           </div>
         </section>
@@ -618,7 +762,7 @@ const LandingPage = () => {
           </div>
           <form
             id="contact-form"
-            className="space-y-4 bg-slate-800/60 border border-slate-700 rounded-2xl p-6 shadow-lg w-full"
+            className="space-y-4 bg-slate-800/60 border border-slate-700 rounded-none p-6 shadow-lg w-full"
             onSubmit={handleContactSubmit}
           >
             <div className="grid md:grid-cols-2 gap-4">
@@ -628,7 +772,7 @@ const LandingPage = () => {
                   required
                   type="text"
                   className="w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-primary/60"
-                  placeholder="Jane Doe"
+                  placeholder="Yip Hong Seng"
                   value={contactForm.name}
                   onChange={(e) => setContactForm((prev) => ({ ...prev, name: e.target.value }))}
                 />
@@ -639,7 +783,7 @@ const LandingPage = () => {
                   required
                   type="email"
                   className="w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-primary/60"
-                  placeholder="you@example.com"
+                  placeholder="hong@codecrafter.dev"
                   value={contactForm.email}
                   onChange={(e) => setContactForm((prev) => ({ ...prev, email: e.target.value }))}
                 />
@@ -650,7 +794,7 @@ const LandingPage = () => {
               <input
                 type="text"
                 className="w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-primary/60"
-                placeholder="Acme Inc."
+                placeholder="codecrafter enterprise"
                 value={contactForm.company}
                 onChange={(e) => setContactForm((prev) => ({ ...prev, company: e.target.value }))}
               />

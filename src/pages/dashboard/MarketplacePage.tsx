@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Bookmark, LogOut, Search, Tag, X, GitBranch, Link2, Clock3, CheckCircle2, MessageCircle, Inbox, ClipboardList, ShieldAlert, Eye, Loader2 } from 'lucide-react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
 
 type ListingStatus = 'open' | 'assigned' | 'fixed';
 type Severity = 'critical' | 'high' | 'medium' | 'low';
@@ -173,6 +173,8 @@ const MarketplacePage = () => {
   const [filterPanelOpen, setFilterPanelOpen] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const [loading, setLoading] = useState(false);
+  const location = useLocation();
+  const { pathname, hash } = location;
 
   const loadListings = () => {
     try {
@@ -270,9 +272,81 @@ const MarketplacePage = () => {
     }
   }, [searchParams]);
 
+  useEffect(() => {
+    if (hash) {
+      const target = document.getElementById(hash.replace('#', ''));
+      if (target) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        return;
+      }
+    }
+    window.scrollTo({ top: 0, behavior: 'auto' });
+  }, [pathname, hash]);
+
   return (
     <>
-      <div className="space-y-6">
+      <div id="marketplace-top" className="space-y-6">
+        <section className="overflow-hidden rounded-none border border-border/60 shadow-sm bg-slate-950 text-white">
+          <div
+            className="relative px-6 md:px-12 lg:px-24 py-16 md:py-20"
+            style={{
+              backgroundImage:
+                'linear-gradient(rgba(15,23,42,0.9), rgba(15,23,42,0.9)), repeating-linear-gradient(0deg, transparent, transparent 22px, rgba(148,163,184,0.08) 22px, rgba(148,163,184,0.08) 23px), repeating-linear-gradient(90deg, transparent, transparent 22px, rgba(148,163,184,0.08) 22px, rgba(148,163,184,0.08) 23px)',
+              backgroundSize: '100% 100%, 100% 24px, 24px 100%',
+            }}
+          >
+            <div className="max-w-6xl mx-auto space-y-8">
+              <div className="space-y-3 text-center">
+                <span className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.28em] text-slate-200">
+                  <span className="h-[1px] w-6 bg-slate-300/60" />
+                  Community Powered Fixes
+                  <span className="h-[1px] w-6 bg-slate-300/60" />
+                </span>
+                <h1 className="text-4xl md:text-5xl font-black tracking-tight leading-tight">
+                  Find bugs. Fix them. Get paid.
+                </h1>
+                <p className="text-lg text-slate-200/90 max-w-3xl mx-auto">
+                  The open marketplace for verified fixes. Browse issues from top repos, ship patches, and earn rewards.
+                </p>
+              </div>
+
+              <div className="max-w-3xl mx-auto flex flex-col sm:flex-row gap-3 items-center justify-center">
+                <Button className="h-12 px-6 bg-white text-slate-900 hover:bg-slate-100" onClick={() => setFilterPanelOpen(true)}>
+                  Browse live issues
+                </Button>
+                <Button
+                  variant="outline"
+                  className="h-12 px-6 border-slate-200 text-white hover:bg-white/10"
+                  onClick={() => setActiveTab('my')}
+                >
+                  View my submissions
+                </Button>
+              </div>
+              <div className="max-w-3xl mx-auto flex flex-wrap justify-center gap-2 text-xs text-slate-200/90">
+                {['#frontend', '#hydration', '#perf', '#security'].map((tag) => (
+                  <span key={tag} className="px-3 py-1 rounded-full border border-slate-700/60 bg-white/5">
+                    {tag}
+                  </span>
+                ))}
+              </div>
+
+              <div className="flex flex-wrap gap-6 justify-center text-sm text-slate-200/90">
+                <div className="flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-emerald-400" />
+                  1,200+ Repos
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-blue-400" />
+                  5k+ Developers
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-amber-300" />
+                  Avg. fix time 4h
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
       <section className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>

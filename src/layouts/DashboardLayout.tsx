@@ -47,6 +47,7 @@ const DashboardLayout = () => {
   const [hoveredItem, setHoveredItem] = useState<{ label: string, top: number } | null>(null);
   const [profilePopoverOpen, setProfilePopoverOpen] = useState(false);
   const [profilePopoverPos, setProfilePopoverPos] = useState<{ top: number; left: number } | null>(null);
+  const [user, setUser] = useState<any>(null);
   const location = useLocation();
   const searchInputRef = useRef<HTMLInputElement>(null);
   const profileAnchorRef = useRef<HTMLDivElement | null>(null);
@@ -58,6 +59,11 @@ const DashboardLayout = () => {
     if (document.documentElement.classList.contains('dark')) {
       setIsDark(true);
     }
+    const loadUser = async () => {
+      const { data } = await supabase.auth.getUser();
+      setUser(data.user);
+    };
+    loadUser();
 
     const handleKeyDown = (e: KeyboardEvent) => {
       // Check if we are pressing '/' and not typing in an input
@@ -284,8 +290,8 @@ const DashboardLayout = () => {
           document.body
         )}
 
-        <div className={cn("p-4 border-t border-border transition-all duration-300 space-y-4", isCollapsed ? "items-center flex flex-col" : "")}>
-          {!isCollapsed && (
+        {!isCollapsed && (
+          <div className="px-4 pb-4">
             <div className="w-full rounded-lg border bg-muted/40 p-3 space-y-2">
               <div className="flex items-center gap-2 text-sm font-semibold">
                 <Sparkles size={16} className="text-amber-500" />
@@ -298,33 +304,47 @@ const DashboardLayout = () => {
                 <Button size="sm" className="bg-black text-white hover:bg-slate-900 w-full">Upgrade</Button>
               </div>
             </div>
-          )}
+          </div>
+        )}
 
+        <div className={cn("p-4 border-t border-border transition-all duration-300", isCollapsed ? "items-center flex flex-col" : "")}>
           <div
             ref={profileAnchorRef}
             onMouseEnter={() => setProfileHover(true)}
             onMouseLeave={() => setProfileHover(false)}
             className={cn("mt-2 flex items-center gap-3", isCollapsed ? "justify-center px-0" : "px-3")}
           >
-            <div className="h-8 w-8 min-w-[2rem] rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold text-xs ring-2 ring-background">
-              JS
-            </div>
-            {!isCollapsed && (
-              <div className="flex flex-col overflow-hidden flex-1">
-                <span className="text-xs font-bold truncate">js07ink</span>
-                <span
-                  className="text-[10px] text-muted-foreground truncate cursor-pointer hover:underline"
-                  onClick={() => navigate('/dashboard/profile')}
-                >
-                  View Profile
-                </span>
-              </div>
-            )}
-            {!isCollapsed && (
-              <Button variant="ghost" size="icon" className="h-8 w-8 ml-auto text-muted-foreground hover:text-destructive" onClick={handleLogout}>
-                 <LogOut size={16} />
-              </Button>
-            )}
+            {(() => {
+              const displayName = user?.user_metadata?.full_name || user?.email || 'User';
+              const initials = displayName
+                .split(/\s+/)
+                .map((part: string) => part[0]?.toUpperCase())
+                .join('')
+                .slice(0, 2) || 'U';
+              return (
+                <>
+                  <div className="h-8 w-8 min-w-[2rem] rounded-full bg-primary text-primary-foreground flex items-center justify-center font-bold text-xs ring-2 ring-background">
+                    {initials}
+                  </div>
+                  {!isCollapsed && (
+                    <div className="flex flex-col overflow-hidden flex-1">
+                      <span className="text-xs font-bold truncate">{displayName}</span>
+                      <span
+                        className="text-[10px] text-muted-foreground truncate cursor-pointer hover:underline"
+                        onClick={() => navigate('/dashboard/profile')}
+                      >
+                        View Profile
+                      </span>
+                    </div>
+                  )}
+                  {!isCollapsed && (
+                    <Button variant="ghost" size="icon" className="h-8 w-8 ml-auto text-muted-foreground hover:text-destructive" onClick={handleLogout}>
+                      <LogOut size={16} />
+                    </Button>
+                  )}
+                </>
+              );
+            })()}
           </div>
         </div>
       </aside>

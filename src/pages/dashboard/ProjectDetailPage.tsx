@@ -1,9 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/Button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/Tabs';
 import { Input } from '@/components/ui/Input';
-import SdlcWorkflowCanvas from '@/components/sdlc/SdlcWorkflowCanvas';
+import SdlcWorkflowCanvas, { SdlcWorkflowCanvasHandle } from '@/components/sdlc/SdlcWorkflowCanvas';
 import { 
   createEnvironment,
   createIndexJob,
@@ -40,7 +40,7 @@ import {
   getPipelineTemplate,
   savePipelineTemplate
 } from '@/lib/supabase';
-import { AlertCircle, Bell, CalendarClock, Clock, Eye, Folder, GitBranch, Github, Image, Mail, PlayCircle, RefreshCcw, Rocket, Send, Server, TerminalSquare, Wrench, Layers, Settings, BookOpen, Bug, Link2, Tag, FileText, X, ShieldCheck, Save, Copy } from 'lucide-react';
+import { AlertCircle, Bell, CalendarClock, Clock, Eye, Folder, GitBranch, Github, Image, Mail, PlayCircle, RefreshCcw, Rocket, Send, Server, TerminalSquare, Wrench, Layers, Settings, BookOpen, Bug, Link2, Tag, FileText, X, ShieldCheck, Save, Copy, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 
 type RunStagesMap = Record<string, PipelineStage[]>;
@@ -77,8 +77,10 @@ const ProjectDetailPage = () => {
   const [testResults, setTestResults] = useState<TestResult[]>([]);
   const [sdlcSteps, setSdlcSteps] = useState<ProjectSdlcStep[]>([]);
   const [collapsedPhases, setCollapsedPhases] = useState<Record<string, boolean>>({});
+  const [checklistCollapse, setChecklistCollapse] = useState({ planning: false, design: false, testing: false, deployment: false });
   const [showSdlcDrawer, setShowSdlcDrawer] = useState(false);
   const [showCanvasDrawer, setShowCanvasDrawer] = useState(false);
+  const canvasRef = useRef<SdlcWorkflowCanvasHandle | null>(null);
   const sdlcPromptTemplate = `You are an SDLC assistant. Keep status short. For each phase:\n- Onboarding Setup: repo/folder linked, contacts, index config.\n- Create Projects: repo-linked (no uploads) or blank project (upload folder later); deliver project record and repo/folder association.\n- Planning / Requirements: Gantt, flows, use cases, docs, minutes, notes.\n- Design: DB design, low-fi UX, system architecture diagram.\n- Development: pipelines, code health, feature checklist.\n- Testing: cases, scenarios, results, bug queue; mention reruns.\n- UAT: scripts, sign-offs, rollout plan.\n- Deployment / Maintenance: env matrix, scripts, domains, backups, monitors.\nReturn concise bullets and call out blockers or missing artifacts.`;
   const [sdlcPrompt, setSdlcPrompt] = useState<string>(sdlcPromptTemplate);
   const handleCopySdlcPrompt = async () => {
@@ -279,6 +281,55 @@ const ProjectDetailPage = () => {
     testResults.forEach((t) => t.module && set.add((t.module as string).toLowerCase()));
     return Array.from(set);
   }, [testResults]);
+
+  const completedIndexes = useMemo(() => indexJobs.filter((job) => job.status === 'completed'), [indexJobs]);
+
+  const latestCompletedIndex = useMemo<IndexJob | null>(() => {
+    return completedIndexes.reduce<IndexJob | null>((latest, job) => {
+      if (!job.created_at) return latest ?? job;
+      if (!latest?.created_at) return job;
+      return new Date(job.created_at) > new Date(latest.created_at) ? job : latest;
+    }, null);
+  }, [completedIndexes]);
+
+  const indexingInsight = useMemo(() => {
+    if (completedIndexes.length === 0) {
+      return 'Kick off your first index to unlock Testing and Findings. Add a cron cadence plus growth threshold so new commits stay indexed automatically.';
+    }
+    const indexedAt = latestCompletedIndex?.created_at
+      ? new Date(latestCompletedIndex.created_at).toLocaleString()
+      : 'recently';
+    const cadence = Number.isFinite(cronHours) ? `${cronHours}h cadence` : 'no cron cadence set';
+    const growth = Number.isFinite(growthThreshold) ? `${growthThreshold} file threshold` : 'default growth threshold';
+    return `Last completed index ran ${indexedAt}. ${cadence} with ${growth}; keep indexing fresh before running tests or submitting to marketplace.`;
+  }, [completedIndexes.length, latestCompletedIndex, cronHours, growthThreshold]);
+
+  const testingStats = useMemo(() => {
+    return testResults.reduce(
+      (acc, tr) => {
+        const status = tr.status?.toUpperCase() || '';
+        if (status === 'PASSED') acc.passed += 1;
+        else if (status === 'FAILED') acc.failed += 1;
+        else if (status === 'RUNNING') acc.running += 1;
+        else acc.pending += 1;
+        return acc;
+      },
+      { passed: 0, failed: 0, pending: 0, running: 0 }
+    );
+  }, [testResults]);
+
+  const testingInsight = useMemo(() => {
+    if (testResults.length === 0) {
+      return 'No test runs yet. Add default templates or create cases, then rerun after indexing completes.';
+    }
+    if (testingStats.failed > 0) {
+      return `Detected ${testingStats.failed} failing cases; rerun after the next index refresh and push fixes to Findings.`;
+    }
+    if (testingStats.pending + testingStats.running > 0) {
+      return `${testingStats.pending} pending and ${testingStats.running} running cases. Assign owners and watch logs from Findings.`;
+    }
+    return `All ${testResults.length} cases are passing. Keep cron rescans on so new commits re-run automatically.`;
+  }, [testResults.length, testingStats]);
 
   const addTemplateTests = () => {
     const pid = project?.id || 'demo';
@@ -1168,7 +1219,7 @@ const ProjectDetailPage = () => {
         next.set('tab', val);
         setSearchParams(next, { replace: true });
       }} className="space-y-6">
-        <TabsList className="sticky top-[56px] z-20 w-full grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 bg-white shadow-sm border border-border/80 rounded-2xl p-3 min-h-[64px] items-center">
+        <TabsList className="sticky top-[56px] z-20 w-full grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 bg-white shadow-sm border border-border/80 rounded-none p-3 min-h-[64px] items-center">
           {tabs.map(tab => (
             <TabsTrigger
               key={tab.id}
@@ -1469,15 +1520,11 @@ const ProjectDetailPage = () => {
                     <span>{finding.createdAt}</span>
                     <span className="uppercase font-semibold">{finding.status}</span>
                   </div>
-                  <div className="flex flex-col gap-2">
                     <div className="flex flex-wrap gap-2 justify-end">
                       <Button size="sm" variant="outline" onClick={() => { goToTab('testing'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>Fix it</Button>
                       <Button size="sm" variant="outline" className="gap-1" onClick={() => handleViewLogs(finding)}><Link2 size={12} /> Logs</Button>
-                    </div>
-                    <div className="flex flex-wrap gap-2 justify-end">
-                      <Button size="sm" variant="secondary" className="gap-1" onClick={() => setSelectedFinding(finding)}><Eye size={12} /> Details</Button>
+                    <Button size="sm" variant="secondary" className="gap-1 shadow-sm" onClick={() => setSelectedFinding(finding)}><Eye size={12} /> Details</Button>
                       <Button size="sm" className="gap-1 bg-black text-white hover:bg-slate-900" onClick={() => openSubmit(finding)}><Send size={12} /> Submit</Button>
-                    </div>
                   </div>
                 </div>
               ))}
@@ -1606,110 +1653,131 @@ const ProjectDetailPage = () => {
               </div>
             </div>
 
-            <div className="grid gap-4 lg:grid-cols-2">
-              <div className="rounded-xl border bg-card p-4 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h4 className="font-semibold flex items-center gap-2"><BookOpen size={16} /> Planning workspace</h4>
-                    <p className="text-sm text-muted-foreground">Canvas + sidebar: Gantt, flow charts, use cases, docs (badges), meeting minutes, notes.</p>
-                  </div>
-                  <Button variant="outline" size="sm" onClick={() => handleStepStatusChange('planning', 'in_progress')}>Mark in progress</Button>
+            <div className="rounded-xl border bg-card p-4 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h4 className="font-semibold flex items-center gap-2"><BookOpen size={16} /> SDLC checklist</h4>
+                  <p className="text-sm text-muted-foreground">Track planning, design, testing, and deployment to-dos in one place.</p>
                 </div>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {planningActionItems.map((action) => {
-                    const pending = new Set(sdlcSteps.find((s) => s.step_key === 'planning')?.pending_actions || []);
-                    return (
-                      <label key={action} className="flex items-center gap-2 text-sm">
-                        <input
-                          type="checkbox"
-                          checked={pending.has(action)}
-                          onChange={() => handleTogglePending('planning', action)}
-                          className="h-4 w-4 rounded border-border"
-                        />
-                        <span>{action}</span>
-                      </label>
-                    );
-                  })}
+                <div className="flex gap-2">
+                  <Button size="sm" variant="ghost" onClick={() => setChecklistCollapse({ planning: true, design: true, testing: true, deployment: true })}>Collapse all</Button>
+                  <Button size="sm" variant="ghost" onClick={() => setChecklistCollapse({ planning: false, design: false, testing: false, deployment: false })}>Expand all</Button>
                 </div>
               </div>
 
-              <div className="rounded-xl border bg-card p-4 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h4 className="font-semibold flex items-center gap-2"><Layers size={16} /> Design board</h4>
-                    <p className="text-sm text-muted-foreground">DB design, low-fidelity UX, and system architecture diagrams tracked together.</p>
+              <div className="grid gap-4 lg:grid-cols-2">
+                <div className="rounded-lg border bg-card p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-semibold flex items-center gap-2"><BookOpen size={16} /> Planning workspace</h4>
+                      <p className="text-sm text-muted-foreground">Canvas + sidebar: Gantt, flow charts, use cases, docs (badges), meeting minutes, notes.</p>
+                    </div>
+                    <Button variant="outline" size="sm" onClick={() => handleStepStatusChange('planning', 'in_progress')}>Mark in progress</Button>
                   </div>
-                  <Button variant="outline" size="sm" onClick={() => handleStepStatusChange('design', 'in_progress')}>Start design</Button>
+                  {!checklistCollapse.planning && (
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {planningActionItems.map((action) => {
+                        const pending = new Set(sdlcSteps.find((s) => s.step_key === 'planning')?.pending_actions || []);
+                        return (
+                          <label key={action} className="flex items-center gap-2 text-sm">
+                            <input
+                              type="checkbox"
+                              checked={pending.has(action)}
+                              onChange={() => handleTogglePending('planning', action)}
+                              className="h-4 w-4 rounded border-border"
+                            />
+                            <span>{action}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {designActionItems.map((action) => {
-                    const pending = new Set(sdlcSteps.find((s) => s.step_key === 'design')?.pending_actions || []);
-                    return (
-                      <label key={action} className="flex items-center gap-2 text-sm">
-                        <input
-                          type="checkbox"
-                          checked={pending.has(action)}
-                          onChange={() => handleTogglePending('design', action)}
-                          className="h-4 w-4 rounded border-border"
-                        />
-                        <span>{action}</span>
-                      </label>
-                    );
-                  })}
+
+                <div className="rounded-lg border bg-card p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-semibold flex items-center gap-2"><Layers size={16} /> Design board</h4>
+                      <p className="text-sm text-muted-foreground">DB design, low-fidelity UX, and system architecture diagrams tracked together.</p>
+                    </div>
+                    <Button variant="outline" size="sm" onClick={() => handleStepStatusChange('design', 'in_progress')}>Start design</Button>
+                  </div>
+                  {!checklistCollapse.design && (
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {designActionItems.map((action) => {
+                        const pending = new Set(sdlcSteps.find((s) => s.step_key === 'design')?.pending_actions || []);
+                        return (
+                          <label key={action} className="flex items-center gap-2 text-sm">
+                            <input
+                              type="checkbox"
+                              checked={pending.has(action)}
+                              onChange={() => handleTogglePending('design', action)}
+                              className="h-4 w-4 rounded border-border"
+                            />
+                            <span>{action}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               </div>
-            </div>
 
-            <div className="grid gap-4 lg:grid-cols-2">
-              <div className="rounded-xl border bg-card p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h4 className="font-semibold flex items-center gap-2"><Wrench size={16} /> Testing readiness</h4>
-                    <p className="text-sm text-muted-foreground">Indexing required before testing tab unlocks viewing/reruns.</p>
+              <div className="grid gap-4 lg:grid-cols-2">
+                <div className="rounded-lg border bg-card p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-semibold flex items-center gap-2"><Wrench size={16} /> Testing readiness</h4>
+                      <p className="text-sm text-muted-foreground">Indexing required before testing tab unlocks viewing/reruns.</p>
+                    </div>
                   </div>
+                  {!checklistCollapse.testing && (
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {testingActionItems.map((action) => {
+                        const pending = new Set(sdlcSteps.find((s) => s.step_key === 'testing')?.pending_actions || []);
+                        return (
+                          <label key={action} className="flex items-center gap-2 text-sm">
+                            <input
+                              type="checkbox"
+                              checked={pending.has(action)}
+                              onChange={() => handleTogglePending('testing', action)}
+                              className="h-4 w-4 rounded border-border"
+                            />
+                            <span>{action}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {testingActionItems.map((action) => {
-                    const pending = new Set(sdlcSteps.find((s) => s.step_key === 'testing')?.pending_actions || []);
-                    return (
-                      <label key={action} className="flex items-center gap-2 text-sm">
-                        <input
-                          type="checkbox"
-                          checked={pending.has(action)}
-                          onChange={() => handleTogglePending('testing', action)}
-                          className="h-4 w-4 rounded border-border"
-                        />
-                        <span>{action}</span>
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
 
-              <div className="rounded-xl border bg-card p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h4 className="font-semibold flex items-center gap-2"><Server size={16} /> Deployment / Maintenance</h4>
-                    <p className="text-sm text-muted-foreground">Environment, script, domain, server, subdomain, backup, monitoring tracked as pending actions.</p>
+                <div className="rounded-lg border bg-card p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-semibold flex items-center gap-2"><Server size={16} /> Deployment / Maintenance</h4>
+                      <p className="text-sm text-muted-foreground">Environment, script, domain, server, subdomain, backup, monitoring tracked as pending actions.</p>
+                    </div>
                   </div>
+                  {!checklistCollapse.deployment && (
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {deploymentActionItems.map((action) => {
+                        const pending = new Set(sdlcSteps.find((s) => s.step_key === 'deployment')?.pending_actions || []);
+                        return (
+                          <label key={action} className="flex items-center gap-2 text-sm">
+                            <input
+                              type="checkbox"
+                              checked={pending.has(action)}
+                              onChange={() => handleTogglePending('deployment', action)}
+                              className="h-4 w-4 rounded border-border"
+                            />
+                            <span>{action}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                  <p className="text-xs text-muted-foreground">Keep scripts and environments updated; use the Indexing tab for cron scans that refresh testing tables and feed bugs into Findings.</p>
                 </div>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {deploymentActionItems.map((action) => {
-                    const pending = new Set(sdlcSteps.find((s) => s.step_key === 'deployment')?.pending_actions || []);
-                    return (
-                      <label key={action} className="flex items-center gap-2 text-sm">
-                        <input
-                          type="checkbox"
-                          checked={pending.has(action)}
-                          onChange={() => handleTogglePending('deployment', action)}
-                          className="h-4 w-4 rounded border-border"
-                        />
-                        <span>{action}</span>
-                      </label>
-                    );
-                  })}
-                </div>
-                <p className="text-xs text-muted-foreground">Keep scripts and environments updated; use the Indexing tab for cron scans that refresh testing tables and feed bugs into Findings.</p>
               </div>
             </div>
           </div>
@@ -1735,6 +1803,37 @@ const ProjectDetailPage = () => {
                 <Button size="sm" className="bg-black text-white hover:bg-slate-900" onClick={handleIndex}>
                   <Layers className="mr-2 h-4 w-4" /> Run index
                 </Button>
+              </div>
+            </div>
+            <div className="rounded-lg border bg-gradient-to-r from-indigo-50 via-white to-white dark:from-slate-900/70 dark:via-slate-900 dark:to-slate-900 p-3 flex items-start gap-3 shadow-sm">
+              <div className="h-9 w-9 rounded-lg bg-indigo-100 text-indigo-700 dark:bg-indigo-900/60 dark:text-indigo-200 flex items-center justify-center">
+                <Sparkles size={18} />
+              </div>
+              <div className="space-y-2">
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-indigo-700 dark:text-indigo-300">AI insight</div>
+                <p className="text-sm text-muted-foreground leading-snug">{indexingInsight}</p>
+                <div className="flex flex-wrap gap-2 text-[11px]">
+                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full border bg-white text-muted-foreground">
+                    <GitBranch size={12} /> {branch}
+                  </span>
+                  {Number.isFinite(cronHours) ? (
+                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full border bg-white text-muted-foreground">
+                      <Clock size={12} /> {cronHours}h cadence
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full border bg-white text-muted-foreground">
+                      <Clock size={12} /> Add cron cadence
+                    </span>
+                  )}
+                  {Number.isFinite(growthThreshold) && (
+                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full border bg-white text-muted-foreground">
+                      <Layers size={12} /> {growthThreshold} file threshold
+                    </span>
+                  )}
+                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full border bg-white text-muted-foreground">
+                    <Sparkles size={12} /> {completedIndexes.length} completed
+                  </span>
+                </div>
               </div>
             </div>
             <div className="grid gap-4 lg:grid-cols-2">
@@ -1887,6 +1986,29 @@ const ProjectDetailPage = () => {
               </div>
               <div className="rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground flex items-center gap-2">
                 <Layers size={14} /> Indexing must complete before all test artifacts are viewable/rerunnable. Cron rescan (Indexing tab) refreshes this table automatically based on file growth.
+              </div>
+              <div className="rounded-lg border bg-gradient-to-r from-emerald-50 via-white to-white dark:from-slate-900/70 dark:via-slate-900 dark:to-slate-900 p-3 flex items-start gap-3 shadow-sm">
+                <div className="h-9 w-9 rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-200 flex items-center justify-center">
+                  <Sparkles size={18} />
+                </div>
+                <div className="space-y-2">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">AI insight</div>
+                  <p className="text-sm text-muted-foreground leading-snug">{testingInsight}</p>
+                  <div className="flex flex-wrap gap-2 text-[11px]">
+                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full border bg-white text-muted-foreground">
+                      <Sparkles size={12} /> {testResults.length} total
+                    </span>
+                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full border bg-white text-muted-foreground">
+                      <ShieldCheck size={12} /> {testingStats.passed} passed
+                    </span>
+                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full border bg-white text-muted-foreground">
+                      <AlertCircle size={12} /> {testingStats.failed} failed
+                    </span>
+                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full border bg-white text-muted-foreground">
+                      <Clock size={12} /> {testingStats.pending} pending
+                    </span>
+                  </div>
+                </div>
               </div>
 
               <div className="rounded-xl border bg-card">
@@ -2323,15 +2445,23 @@ const ProjectDetailPage = () => {
       {showCanvasDrawer && (
         <div className="fixed inset-0 w-screen h-screen z-50 m-0 p-0 !mt-0 !pt-0 bg-black/40 backdrop-blur-sm flex items-stretch justify-end">
           <div className="bg-white dark:bg-slate-900 w-full max-w-6xl h-full overflow-hidden shadow-2xl border-l border-border relative animate-in slide-in-from-right duration-200 flex flex-col">
-            <div className="flex items-center justify-between gap-4 px-4 pb-2 pt-0">
+            <div className="flex items-center justify-between gap-4 px-4 pb-2 pt-4">
               <div className="min-w-0">
                 <h3 className="text-xl font-semibold">SDLC canvas</h3>
                 <p className="text-sm text-muted-foreground">Drag nodes, connect flows, switch views. Saves to Supabase when authenticated.</p>
               </div>
+              <div className="flex items-center gap-2">
+                <Button size="sm" variant="secondary" className="bg-black text-white hover:bg-slate-900" onClick={() => canvasRef.current?.publishDraft()}>
+                  <PlayCircle className="mr-1 h-4 w-4" /> Publish (draft)
+                </Button>
+                <Button size="sm" className="bg-black text-white hover:bg-slate-900" onClick={() => canvasRef.current?.save()}>
+                  <Save className="mr-1 h-4 w-4" /> Save
+                </Button>
               <Button variant="outline" onClick={() => setShowCanvasDrawer(false)}>Close</Button>
+              </div>
             </div>
             <div className="flex-1 min-h-0 overflow-auto px-4 pb-4 pt-0">
-              <SdlcWorkflowCanvas projectId={project?.id || undefined} />
+              <SdlcWorkflowCanvas ref={canvasRef} projectId={project?.id || undefined} hideHeaderActions />
             </div>
           </div>
         </div>

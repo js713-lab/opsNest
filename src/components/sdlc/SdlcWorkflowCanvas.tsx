@@ -1,8 +1,9 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import ReactFlow, {
   Background,
   Controls,
   MiniMap,
+  MarkerType,
   addEdge,
   Connection,
   Edge,
@@ -16,6 +17,8 @@ import 'reactflow/dist/style.css';
 import {
   Beaker,
   Clock3,
+  Database,
+  FileText,
   GitFork,
   Layers,
   ListChecks,
@@ -30,6 +33,7 @@ import {
   Share2,
   Split,
   TimerReset,
+  User,
   Workflow,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -197,13 +201,29 @@ const palette = [
   { key: 'validation', label: 'Validation', icon: <TimerReset size={14} />, category: 'Validation', actions: ['Rules'] },
 ];
 
+const diagramPalette = [
+  { key: 'actor', label: 'Actor', icon: <User size={14} />, category: 'Actor', actions: ['Role'] },
+  { key: 'system', label: 'System', icon: <Layers size={14} />, category: 'System', actions: ['Boundary'] },
+  { key: 'process', label: 'Process', icon: <Split size={14} />, category: 'Process', actions: ['Step'] },
+  { key: 'datastore', label: 'Data store', icon: <Database size={14} />, category: 'Data', actions: ['CRUD'] },
+  { key: 'external', label: 'External', icon: <PanelBottom size={14} />, category: 'External', actions: ['Integration'] },
+  { key: 'note', label: 'Note', icon: <FileText size={14} />, category: 'Note', actions: ['Context'] },
+];
+
 const defaultViewport = { x: 0, y: 0, zoom: 0.9 };
 
 type Props = {
   projectId?: string;
+  hideHeaderActions?: boolean;
 };
 
-export const SdlcWorkflowCanvas: React.FC<Props> = ({ projectId }) => {
+export type SdlcWorkflowCanvasHandle = {
+  save: () => Promise<void>;
+  publishDraft: () => void;
+  fitView: () => void;
+};
+
+export const SdlcWorkflowCanvas = forwardRef<SdlcWorkflowCanvasHandle, Props>(({ projectId, hideHeaderActions }, ref) => {
   const [nodes, setNodes, onNodesChange] = useNodesState<CanvasNodeData>(defaultNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(defaultEdges);
   const [viewMode, setViewMode] = useState<SdlcWorkflowViewMode>('workflow');
@@ -216,6 +236,19 @@ export const SdlcWorkflowCanvas: React.FC<Props> = ({ projectId }) => {
   const [isDirty, setIsDirty] = useState(false);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const isDemo = !projectId || projectId.startsWith('demo');
+  const [mermaidSnippet, setMermaidSnippet] = useState<string>('A-->B\nB-->C');
+
+  const displayedEdges = useMemo(() => {
+    const marker =
+      viewMode === 'workflow'
+        ? { type: MarkerType.ArrowClosed, color: '#0f172a', width: 16, height: 16 }
+        : undefined;
+    return edges.map((edge) => ({
+      ...edge,
+      markerEnd: marker,
+      style: viewMode === 'workflow' ? { stroke: '#0f172a', strokeWidth: 2 } : edge.style,
+    }));
+  }, [edges, viewMode]);
 
   const handleSave = useCallback(
     async (quiet?: boolean) => {
@@ -337,6 +370,20 @@ export const SdlcWorkflowCanvas: React.FC<Props> = ({ projectId }) => {
   }, [nodes]);
 
   const statusLabel = loading ? 'Loading…' : saving ? 'Saving…' : isDirty ? 'Unsaved' : 'Saved';
+  const diagramGridClass =
+    viewMode === 'diagram'
+      ? 'bg-[radial-gradient(circle,_rgba(148,163,184,0.25)_1px,_transparent_0)] bg-[length:18px_18px]'
+      : '';
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      save: () => handleSave(),
+      publishDraft: () => setIsDirty(true),
+      fitView: () => reactFlowInstance?.fitView(),
+    }),
+    [handleSave, reactFlowInstance]
+  );
 
   return (
     <div className="rounded-xl border bg-card p-4 space-y-4 h-full flex flex-col overflow-auto">
@@ -350,19 +397,29 @@ export const SdlcWorkflowCanvas: React.FC<Props> = ({ projectId }) => {
             Drag from the sidebar, connect nodes, switch to Gantt for delivery view, and save to Supabase.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2 items-center justify-end w-full md:w-auto md:ml-auto">
+        <div className="flex flex-col items-end gap-1 w-full md:w-auto md:ml-auto">
+          <div className="flex flex-wrap gap-2 items-center justify-end">
           <span className="text-xs px-2 py-1 rounded-full border bg-muted text-muted-foreground">v{version}</span>
           <span className="text-xs px-2 py-1 rounded-full border bg-muted text-muted-foreground">{statusLabel}</span>
-          {lastSaved && <span className="text-xs text-muted-foreground whitespace-nowrap">Last saved {new Date(lastSaved).toLocaleTimeString()}</span>}
           <Button size="sm" variant="outline" onClick={() => reactFlowInstance?.fitView()}>
             <RefreshCcw className="mr-1 h-4 w-4" /> Fit
           </Button>
+            {!hideHeaderActions && (
+              <>
           <Button size="sm" variant="secondary" onClick={() => setIsDirty(true)}>
             <PlayCircle className="mr-1 h-4 w-4" /> Publish (draft)
           </Button>
           <Button size="sm" onClick={() => handleSave()}>
             <Save className="mr-1 h-4 w-4" /> Save
           </Button>
+              </>
+            )}
+          </div>
+          {lastSaved && (
+            <span className="text-[11px] text-muted-foreground whitespace-nowrap">
+              Last saved {new Date(lastSaved).toLocaleTimeString()}
+            </span>
+          )}
         </div>
       </div>
 
@@ -370,6 +427,7 @@ export const SdlcWorkflowCanvas: React.FC<Props> = ({ projectId }) => {
         <Button
           size="sm"
           variant={viewMode === 'workflow' ? 'default' : 'outline'}
+          className={viewMode === 'workflow' ? 'bg-slate-900 text-white hover:bg-slate-800' : ''}
           onClick={() => setViewMode('workflow')}
         >
           <Workflow size={14} className="mr-1" /> Workflow
@@ -377,6 +435,7 @@ export const SdlcWorkflowCanvas: React.FC<Props> = ({ projectId }) => {
         <Button
           size="sm"
           variant={viewMode === 'diagram' ? 'default' : 'outline'}
+          className={viewMode === 'diagram' ? 'bg-slate-900 text-white hover:bg-slate-800' : ''}
           onClick={() => setViewMode('diagram')}
         >
           <Share2 size={14} className="mr-1" /> Diagram
@@ -384,6 +443,7 @@ export const SdlcWorkflowCanvas: React.FC<Props> = ({ projectId }) => {
         <Button
           size="sm"
           variant={viewMode === 'gantt' ? 'default' : 'outline'}
+          className={viewMode === 'gantt' ? 'bg-slate-900 text-white hover:bg-slate-800' : ''}
           onClick={() => setViewMode('gantt')}
         >
           <PanelBottom size={14} className="mr-1" /> Gantt
@@ -396,15 +456,15 @@ export const SdlcWorkflowCanvas: React.FC<Props> = ({ projectId }) => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-3 flex-1 min-h-0">
+      <div className={`grid grid-cols-1 ${sidebarOpen ? 'lg:grid-cols-[260px_1fr]' : ''} gap-3 flex-1 min-h-0`}>
         {sidebarOpen && (
           <div className="rounded-lg border bg-muted/40 p-3 space-y-3 overflow-auto">
             <div className="flex items-center justify-between">
-              <p className="text-sm font-semibold">Palette</p>
+              <p className="text-sm font-semibold">{viewMode === 'diagram' ? 'DFD / Use case palette' : 'Palette'}</p>
               <span className="text-[11px] text-muted-foreground">Drag to canvas</span>
             </div>
             <div className="grid grid-cols-1 gap-2">
-              {palette.map((item) => (
+              {(viewMode === 'diagram' ? diagramPalette : palette).map((item) => (
                 <button
                   key={item.key}
                   className="flex items-center gap-2 rounded-lg border border-dashed bg-white px-3 py-2 text-sm text-left hover:border-primary"
@@ -444,10 +504,68 @@ export const SdlcWorkflowCanvas: React.FC<Props> = ({ projectId }) => {
                 </button>
               ))}
             </div>
+            {viewMode === 'diagram' && (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-muted-foreground">Mermaid-like edges (A → B)</p>
+                <textarea
+                  className="w-full h-24 rounded-md border border-dashed bg-white px-3 py-2 text-sm"
+                  value={mermaidSnippet}
+                  onChange={(e) => setMermaidSnippet(e.target.value)}
+                  placeholder={'Actor-->System\nSystem-->DataStore'}
+                />
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="w-full bg-slate-900 text-white hover:bg-slate-800"
+                  onClick={() => {
+                    const lines = mermaidSnippet.split('\n').map((l) => l.trim()).filter(Boolean);
+                    if (lines.length === 0) return;
+                    const nodeMap = new Map<string, Node<CanvasNodeData>>();
+                    nodes.forEach((n) => nodeMap.set(n.id, n));
+                    const ensureNode = (name: string) => {
+                      const existing = Array.from(nodeMap.values()).find((n) => n.data.label === name);
+                      if (existing) return existing;
+                      const id = crypto.randomUUID();
+                      const newNode: Node<CanvasNodeData> = {
+                        id,
+                        type: 'sdlc',
+                        position: { x: Math.random() * 600, y: Math.random() * 300 },
+                        data: { label: name, category: 'Diagram', actions: [], status: 'pending', startDay: 0, durationDays: 1 },
+                      };
+                      nodeMap.set(id, newNode);
+                      return newNode;
+                    };
+                    const newEdges: Edge[] = [];
+                    lines.forEach((line) => {
+                      const match = line.match(/^([\w-]+)\s*-->\s*([\w-]+)$/);
+                      if (match) {
+                        const [, a, b] = match;
+                        const n1 = ensureNode(a);
+                        const n2 = ensureNode(b);
+                        if (n1 && n2) {
+                          newEdges.push({
+                            id: crypto.randomUUID(),
+                            source: n1.id,
+                            target: n2.id,
+                            type: 'smoothstep',
+                          });
+                        }
+                      }
+                    });
+                    setNodes(Array.from(nodeMap.values()));
+                    setEdges((eds) => eds.concat(newEdges));
+                    setIsDirty(true);
+                    toast.success('Diagram nodes/edges added');
+                  }}
+                >
+                  Insert from snippet
+                </Button>
+              </div>
+            )}
           </div>
         )}
 
-        <div className="rounded-lg border bg-white flex-1 min-h-[520px] overflow-hidden">
+        <div className={`rounded-lg border bg-white flex-1 min-h-[520px] overflow-hidden ${diagramGridClass}`}>
           {viewMode === 'gantt' ? (
             <div className="p-4 space-y-3 h-full overflow-auto">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -482,7 +600,7 @@ export const SdlcWorkflowCanvas: React.FC<Props> = ({ projectId }) => {
             <div className="h-full" ref={wrapperRef}>
               <ReactFlow
                 nodes={nodes}
-                edges={edges}
+                edges={displayedEdges}
                 onNodesChange={(changes) => {
                   onNodesChange(changes);
                   setIsDirty(true);
@@ -496,6 +614,8 @@ export const SdlcWorkflowCanvas: React.FC<Props> = ({ projectId }) => {
                 fitView
                 defaultViewport={defaultViewport}
                 panOnScroll
+                snapToGrid={viewMode === 'diagram'}
+                snapGrid={[18, 18]}
                 onDrop={onDrop}
                 onDragOver={onDragOver}
                 onInit={setReactFlowInstance}
@@ -516,7 +636,7 @@ export const SdlcWorkflowCanvas: React.FC<Props> = ({ projectId }) => {
       )}
     </div>
   );
-};
+});
 
 export default SdlcWorkflowCanvas;
 

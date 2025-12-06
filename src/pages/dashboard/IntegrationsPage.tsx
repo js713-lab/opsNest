@@ -95,6 +95,7 @@ const IntegrationsPage = () => {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'connected' | 'disconnected'>('all');
   const [userId, setUserId] = useState<string | null>(null);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
 
   const LOCAL_CONFIG_KEY = 'integrations_config_local';
 
@@ -118,15 +119,17 @@ const IntegrationsPage = () => {
       const { data: auth } = await supabase.auth.getUser();
       if (!auth.user) {
         setUserId(null);
+        setUserEmail(null);
       } else {
         setUserId(auth.user.id);
+        setUserEmail(auth.user.email || null);
       }
-      fetchIntegrations(auth.user?.id || null);
+      fetchIntegrations(auth.user?.id || null, auth.user?.email || null);
     };
     init();
   }, []);
 
-  const fetchIntegrations = async (uid: string | null = userId) => {
+  const fetchIntegrations = async (uid: string | null = userId, email: string | null = userEmail) => {
     // In a real app, we would get the current user's ID
     // For this demo, we'll just fetch all configs or mock it if table doesn't exist yet
     try {
@@ -136,7 +139,10 @@ const IntegrationsPage = () => {
       if (data) {
         setIntegrations(prev => prev.map(integration => {
           const config = data.find((d: any) => d.provider === integration.id);
-          const envKey = ENV_DEFAULTS[integration.id];
+          const allowEnv = integration.id === 'anthropic' || integration.id === 'github'
+            ? (email || '').toLowerCase() === 'js07ink@gmail.com'
+            : true;
+          const envKey = allowEnv ? ENV_DEFAULTS[integration.id] : undefined;
           const mergedConfig = config ? config.config : integration.config;
           const withEnvKey = envKey ? { ...(mergedConfig || {}), apiKey: envKey } : mergedConfig;
           const connected = config?.is_active || Boolean(envKey);
@@ -171,7 +177,10 @@ const IntegrationsPage = () => {
     // Fallback: apply env defaults even if table doesn't exist yet
     setIntegrations(prev =>
       prev.map(integration => {
-        const envKey = ENV_DEFAULTS[integration.id];
+        const allowEnv = integration.id === 'anthropic' || integration.id === 'github'
+          ? (userEmail || '').toLowerCase() === 'js07ink@gmail.com'
+          : true;
+        const envKey = allowEnv ? ENV_DEFAULTS[integration.id] : undefined;
         return envKey
           ? { ...integration, connected: true, config: { ...(integration.config || {}), apiKey: envKey } }
           : integration;
@@ -192,7 +201,10 @@ const IntegrationsPage = () => {
     }
 
     setSelectedIntegration(integration);
-    const envApiKey = ENV_DEFAULTS[integration.id] || '';
+    const allowEnv = integration.id === 'anthropic' || integration.id === 'github'
+      ? (userEmail || '').toLowerCase() === 'js07ink@gmail.com'
+      : true;
+    const envApiKey = allowEnv ? (ENV_DEFAULTS[integration.id] || '') : '';
     const defaultConfig = {
       apiKey: envApiKey,
       environment: 'sandbox',
@@ -661,7 +673,7 @@ const IntegrationsPage = () => {
                         />
                       </div>
                       <div className="space-y-1">
-                        <label className="text-sm font-medium">Auth / Encryption</label>
+                        <label className="text-sm font-medium block">Encryption</label>
                         <select
                           className="h-10 rounded-md border border-input bg-background px-3 text-sm"
                           value={configForm.authMethod}
@@ -671,7 +683,6 @@ const IntegrationsPage = () => {
                           <option value="tls">TLS/STARTTLS</option>
                           <option value="none">None</option>
                         </select>
-                        <p className="text-[10px] text-muted-foreground">Pick the encryption your SMTP server expects.</p>
                       </div>
                       <div className="space-y-1">
                         <label className="text-sm font-medium">From Email</label>
