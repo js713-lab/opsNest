@@ -23,6 +23,8 @@ type Listing = {
   author?: string;
 };
 
+const MARKETPLACE_SUBMISSION_KEY = 'opsnestMarketplaceSubmissions';
+
 const listingsSeed: Listing[] = [
   {
     id: 'L-1048',
@@ -161,6 +163,7 @@ const ListingActions = ({ listing, onOpen, orientation = 'row', className }: Lis
 };
 
 const MarketplacePage = () => {
+  const [listings, setListings] = useState<Listing[]>(listingsSeed);
   const [search, setSearch] = useState('');
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [selectedSeverity, setSelectedSeverity] = useState<Severity[]>([]);
@@ -171,26 +174,44 @@ const MarketplacePage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [loading, setLoading] = useState(false);
 
-  const handleRefresh = () => {
-    setLoading(true);
-    setTimeout(() => {
-      window.location.reload();
-    }, 500);
+  const loadListings = () => {
+    try {
+      const stored = JSON.parse(localStorage.getItem(MARKETPLACE_SUBMISSION_KEY) || '[]') as Listing[];
+      setListings([...stored, ...listingsSeed]);
+    } catch {
+      setListings([...listingsSeed]);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const myListings: Listing[] = listingsSeed.slice(0, 2);
+  const handleRefresh = () => {
+    setLoading(true);
+    loadListings();
+  };
+
+  useEffect(() => {
+    loadListings();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const myListings: Listing[] = (() => {
+    const mine = listings.filter((l) => (l.author || '').toLowerCase() === 'you');
+    if (mine.length > 0) return mine;
+    return listings.slice(0, 2);
+  })();
   const messages = [
     { id: 'm1', from: 'alice', listing: 'L-1048', preview: 'Can you attach last run logs?', time: '5m ago' },
     { id: 'm2', from: 'qa-team', listing: 'L-1050', preview: 'We saw similar OAuth flake, can pair?', time: '1h ago' },
   ];
 
   const categories = useMemo(
-    () => Array.from(new Set(listingsSeed.map((l) => l.category))),
-    []
+    () => Array.from(new Set(listings.map((l) => l.category))),
+    [listings]
   );
 
   const filteredListings = useMemo(() => {
-    return listingsSeed.filter((l) => {
+    return listings.filter((l) => {
       const matchesSearch =
         l.title.toLowerCase().includes(search.toLowerCase()) ||
         l.repo.toLowerCase().includes(search.toLowerCase()) ||
@@ -203,7 +224,7 @@ const MarketplacePage = () => {
         selectedStatus.length === 0 || selectedStatus.includes(l.status);
       return matchesSearch && matchesCategory && matchesSeverity && matchesStatus;
     });
-  }, [search, selectedCategories, selectedSeverity, selectedStatus]);
+  }, [listings, search, selectedCategories, selectedSeverity, selectedStatus]);
 
   const toggle = <T extends string>(list: T[], value: T, setter: (next: T[]) => void) => {
     setter(list.includes(value) ? list.filter((v) => v !== value) : [...list, value]);
@@ -485,7 +506,7 @@ const MarketplacePage = () => {
       </div>
 
       {selectedListing && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-start justify-end">
+        <div className="fixed inset-0 w-screen h-screen z-50 m-0 p-0 !mt-0 !pt-0 bg-black/40 backdrop-blur-sm flex items-stretch justify-end">
           <div className="bg-white dark:bg-slate-900 w-full max-w-xl h-full overflow-y-auto shadow-2xl p-6 border-l border-border relative animate-in slide-in-from-right duration-200">
             <button className="absolute right-4 top-4 text-muted-foreground hover:text-foreground" onClick={closeListing}>
               <X size={18} />

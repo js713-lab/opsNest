@@ -1,6 +1,12 @@
 Diagram link to the code
 Requirements meeting minutes or any
 
+### SDLC workflow canvas (in app)
+- In `Dashboard → Project → SDLC` click **Open canvas** to jump to the interactive board.
+- Sidebar palette mirrors workflow items (Task, Email, Parallel task, Condition, Assign data, Wait for event, Time delay, List view, Variables, Validation); drag or click to add.
+- Switch between `Workflow`, `Diagram`, and `Gantt` views. Gantt bars are auto-built from node metadata.
+- Use `Save` to persist to Supabase (`sdlc_workflows`); quick auto-save also runs after edits.
+- Collapse the palette for more space; use `Fit` to reset zoom/pan.
 
 
 

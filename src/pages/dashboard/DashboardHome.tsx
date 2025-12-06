@@ -122,6 +122,12 @@ const DashboardHome = () => {
     { label: 'Recent Pipelines', value: stats.pipelines, icon: PlayCircle, desc: 'Builds & checks' },
   ];
 
+  const healthCards = [
+    { label: 'Overall health', value: stats.projects > 0 ? 'Good' : 'Setup', icon: CheckCircle2, tone: 'text-emerald-600', bg: 'bg-emerald-50 dark:bg-emerald-900/20' },
+    { label: 'Pipelines', value: stats.pipelines > 0 ? 'Running' : 'Idle', icon: Activity, tone: 'text-blue-600', bg: 'bg-blue-50 dark:bg-blue-900/20' },
+    { label: 'Environments', value: stats.environments > 0 ? 'Live' : 'None', icon: Globe, tone: 'text-amber-600', bg: 'bg-amber-50 dark:bg-amber-900/20' },
+  ];
+
   if (!onboardingComplete) {
     return <GettingStartedPage onComplete={() => setOnboardingComplete(true)} />;
   }
@@ -131,6 +137,19 @@ const DashboardHome = () => {
       <div>
         <h2 className="text-3xl font-bold tracking-tight">Dashboard</h2>
         <p className="text-muted-foreground">Welcome back, {userName}!</p>
+      </div>
+
+      {/* Project health overview */}
+      <div className="grid gap-4 md:grid-cols-3">
+        {healthCards.map((card) => (
+          <div key={card.label} className={`rounded-xl border bg-card shadow-sm p-4 flex items-center gap-3 ${card.bg}`}>
+            <card.icon className={`h-5 w-5 ${card.tone}`} />
+            <div>
+              <p className="text-sm font-semibold">{card.label}</p>
+              <p className="text-lg font-bold">{loading ? '-' : card.value}</p>
+            </div>
+          </div>
+        ))}
       </div>
 
       {/* Stats Grid */}

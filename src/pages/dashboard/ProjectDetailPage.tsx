@@ -3,6 +3,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/Button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/Tabs';
 import { Input } from '@/components/ui/Input';
+import SdlcWorkflowCanvas from '@/components/sdlc/SdlcWorkflowCanvas';
 import { 
   createEnvironment,
   createIndexJob,
@@ -18,6 +19,7 @@ import {
   listPipelineRuns,
   listPipelineStages,
   listScripts,
+  listTechStacks,
   listTestResults,
   ProjectIndexingConfig,
   ProjectNotificationSettings,
@@ -26,6 +28,7 @@ import {
   PipelineStage,
   Environment,
   Script,
+  TechStack,
   IndexJob,
   TestResult,
   ProjectSdlcStep,
@@ -37,7 +40,7 @@ import {
   getPipelineTemplate,
   savePipelineTemplate
 } from '@/lib/supabase';
-import { AlertCircle, Bell, CalendarClock, Clock, Folder, GitBranch, Mail, PlayCircle, RefreshCcw, Rocket, Server, TerminalSquare, Wrench, Layers, Settings, BookOpen, Bug, Link2, Tag, FileText, X, ShieldCheck, Save, Copy } from 'lucide-react';
+import { AlertCircle, Bell, CalendarClock, Clock, Eye, Folder, GitBranch, Github, Image, Mail, PlayCircle, RefreshCcw, Rocket, Send, Server, TerminalSquare, Wrench, Layers, Settings, BookOpen, Bug, Link2, Tag, FileText, X, ShieldCheck, Save, Copy } from 'lucide-react';
 import { toast } from 'sonner';
 
 type RunStagesMap = Record<string, PipelineStage[]>;
@@ -57,6 +60,8 @@ type Finding = {
   tags: string[];
 };
 
+const MARKETPLACE_SUBMISSION_KEY = 'opsnestMarketplaceSubmissions';
+
 const ProjectDetailPage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -67,11 +72,13 @@ const ProjectDetailPage = () => {
   const [pipelineSaving, setPipelineSaving] = useState(false);
   const [environments, setEnvironments] = useState<Environment[]>([]);
   const [scripts, setScripts] = useState<Script[]>([]);
+  const [techStacks, setTechStacks] = useState<TechStack[]>([]);
   const [indexJobs, setIndexJobs] = useState<IndexJob[]>([]);
   const [testResults, setTestResults] = useState<TestResult[]>([]);
   const [sdlcSteps, setSdlcSteps] = useState<ProjectSdlcStep[]>([]);
   const [collapsedPhases, setCollapsedPhases] = useState<Record<string, boolean>>({});
   const [showSdlcDrawer, setShowSdlcDrawer] = useState(false);
+  const [showCanvasDrawer, setShowCanvasDrawer] = useState(false);
   const sdlcPromptTemplate = `You are an SDLC assistant. Keep status short. For each phase:\n- Onboarding Setup: repo/folder linked, contacts, index config.\n- Create Projects: repo-linked (no uploads) or blank project (upload folder later); deliver project record and repo/folder association.\n- Planning / Requirements: Gantt, flows, use cases, docs, minutes, notes.\n- Design: DB design, low-fi UX, system architecture diagram.\n- Development: pipelines, code health, feature checklist.\n- Testing: cases, scenarios, results, bug queue; mention reruns.\n- UAT: scripts, sign-offs, rollout plan.\n- Deployment / Maintenance: env matrix, scripts, domains, backups, monitors.\nReturn concise bullets and call out blockers or missing artifacts.`;
   const [sdlcPrompt, setSdlcPrompt] = useState<string>(sdlcPromptTemplate);
   const handleCopySdlcPrompt = async () => {
@@ -89,6 +96,7 @@ const ProjectDetailPage = () => {
   const [loading, setLoading] = useState(true);
   const [selectedFinding, setSelectedFinding] = useState<Finding | null>(null);
   const [showSubmitModal, setShowSubmitModal] = useState(false);
+  const [logDrawerFinding, setLogDrawerFinding] = useState<Finding | null>(null);
   const [submitForm, setSubmitForm] = useState({
     title: '',
     severity: 'medium' as Severity,
@@ -344,10 +352,11 @@ const ProjectDetailPage = () => {
         const proj = await getProject(id);
         setProject(proj);
 
-        const [runs, envs, scrs, idxJobs, tests, steps, idxCfg, notifCfg, pipelineTemplate] = await Promise.all([
+        const [runs, envs, scrs, techs, idxJobs, tests, steps, idxCfg, notifCfg, pipelineTemplate] = await Promise.all([
           listPipelineRuns(id),
           listEnvironments(id),
           listScripts(id),
+          listTechStacks(id),
           listIndexJobs(id),
           listTestResults(id),
           listSdlcSteps(id),
@@ -358,6 +367,7 @@ const ProjectDetailPage = () => {
         setPipelineRuns(runs);
         setEnvironments(envs);
         setScripts(scrs);
+        setTechStacks(techs);
         setIndexJobs(idxJobs);
         setTestResults(tests);
         setSdlcSteps(ensureStepDefaults(steps || [], proj.id));
@@ -440,6 +450,11 @@ const ProjectDetailPage = () => {
     ]);
     setScripts([
       { id: 'scr-1', project_id: projectId, name: 'build.sh', kind: 'build', content: '#!/usr/bin/env bash\nnpm ci\nnpm run build' },
+    ]);
+    setTechStacks([
+      { id: 'stack-1', project_id: projectId, name: 'Next.js', category: 'frontend', version: '14.2', source: 'package.json', confidence: 96, notes: 'Detected from dependencies' },
+      { id: 'stack-2', project_id: projectId, name: 'Node.js', category: 'runtime', version: '20.x', source: 'engines field', confidence: 92, notes: 'Pipeline uses Node 20' },
+      { id: 'stack-3', project_id: projectId, name: 'Supabase', category: 'backend', version: 'edge', source: 'config', confidence: 88, notes: 'Auth + Postgres' },
     ]);
     setIndexJobs([
       { id: 'idx-1', project_id: projectId, status: 'running', branch: 'main', message: 'Indexing repo...', created_at: new Date().toISOString() },
@@ -676,12 +691,6 @@ const ProjectDetailPage = () => {
     }
   };
 
-  const handleRerunSuite = async () => {
-    setTestName((prev) => prev || 'playwright_suite');
-    setTestStatus('RUNNING');
-    await handleAddTestResult();
-  };
-
   const handleApplyTemplate = async (tmpl: { title: string; module: string; scenario: string; status: TestResult['status'] }) => {
     if (!project) return;
     setTestName(tmpl.title);
@@ -900,11 +909,7 @@ const ProjectDetailPage = () => {
   }, [indexJobs, testResults, project]);
 
   const handleViewLogs = (finding: Finding) => {
-    if (finding.logsUrl) {
-      window.open(finding.logsUrl, '_blank', 'noopener,noreferrer');
-    } else {
-      toast.info('No logs attached for this item.');
-    }
+    setLogDrawerFinding(finding);
   };
 
   const openSubmit = (finding?: Finding) => {
@@ -929,6 +934,37 @@ const ProjectDetailPage = () => {
 
   const handleSubmitMarketplace = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+
+    const existing = (() => {
+      try {
+        return JSON.parse(localStorage.getItem(MARKETPLACE_SUBMISSION_KEY) || '[]');
+      } catch {
+        return [];
+      }
+    })() as any[];
+
+    const parsedTags = submitForm.tags
+      .split(',')
+      .map((t) => t.trim())
+      .filter(Boolean);
+
+    const submission = {
+      id: `SUB-${Date.now()}`,
+      title: submitForm.title || 'Untitled submission',
+      repo: submitForm.repoUrl || project?.name || 'unknown',
+      branch: submitForm.branch || branch || 'main',
+      category: submitForm.category || 'Bug',
+      severity: submitForm.severity,
+      status: 'open',
+      tags: parsedTags,
+      createdAt: 'just now',
+      summary: submitForm.impact || submitForm.reproSteps || submitForm.expected || submitForm.actual || 'No summary provided.',
+      logsUrl: submitForm.logsUrl || undefined,
+      cronRef: submitForm.cronRef || undefined,
+      author: project?.name || 'You',
+    };
+
+    localStorage.setItem(MARKETPLACE_SUBMISSION_KEY, JSON.stringify([submission, ...existing]));
     toast.success('Submitted to marketplace');
     setShowSubmitModal(false);
   };
@@ -1265,7 +1301,9 @@ const ProjectDetailPage = () => {
                     />
                   </div>
                   <div className="flex justify-end">
-                    <Button size="sm" onClick={handleCreateEnv}>Save environment</Button>
+                    <Button size="sm" className="bg-black text-white hover:bg-slate-900" onClick={handleCreateEnv}>
+                      Save environment
+                    </Button>
                   </div>
                 </div>
               )}
@@ -1293,38 +1331,12 @@ const ProjectDetailPage = () => {
               </div>
             </div>
 
-          <div className="mt-6">
+          <div className="mt-6 grid gap-4 lg:grid-cols-2">
             <div className="rounded-xl border bg-card p-4 space-y-4">
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <h3 className="font-semibold flex items-center gap-2"><Settings size={16} /> Scripts</h3>
                   <p className="text-sm text-muted-foreground">Capture deploy/build scripts here; full view in Scripts tab.</p>
-                </div>
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                  <select
-                    className="h-10 rounded-md border border-input bg-background px-3 text-sm min-w-[160px]"
-                    value={selectedScriptId || ''}
-                    onChange={(e) => handleSelectScript(e.target.value)}
-                  >
-                    <option value="">New script...</option>
-                    {scripts.map((s) => (
-                      <option key={s.id} value={s.id}>{s.name}</option>
-                    ))}
-                  </select>
-                  <Input
-                    value={scriptName}
-                    onChange={(e) => setScriptName(e.target.value)}
-                    className="w-44"
-                    placeholder="build.sh"
-                  />
-                  {editMode ? (
-                    <div className="flex gap-2">
-                      <Button size="sm" onClick={handleSaveScript}>Save</Button>
-                      <Button size="sm" variant="outline" onClick={handleCancelEdit}>Cancel</Button>
-                    </div>
-                  ) : (
-                    <Button size="sm" onClick={handleSaveScript}>Add</Button>
-                  )}
                 </div>
               </div>
               <div className="space-y-2">
@@ -1336,18 +1348,87 @@ const ProjectDetailPage = () => {
                   onChange={(e) => setScriptContent(e.target.value)}
                 />
               </div>
-              <div className="space-y-2">
+              <div className="grid gap-2 md:grid-cols-2">
                 {scripts.map((script) => (
-                  <div key={script.id} className="rounded-lg border p-3 flex items-center justify-between w-full">
-                    <div>
+                  <div key={script.id} className="rounded-lg border p-3 flex flex-col gap-2 bg-muted/30">
+                    <div className="flex items-center justify-between">
                       <div className="font-semibold flex items-center gap-2"><TerminalSquare size={14} /> {script.name}</div>
-                      <div className="text-xs text-muted-foreground truncate max-w-sm">{script.content}</div>
+                      <span className="text-[11px] px-2 py-1 rounded-full border bg-white text-muted-foreground capitalize">{script.kind || 'custom'}</span>
                     </div>
-                    <Button size="sm" variant="outline" onClick={() => handleRunScript(script.id)}>Run</Button>
+                    <div className="text-xs text-muted-foreground line-clamp-3">{script.content}</div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] text-muted-foreground">{script.notes || 'No notes yet'}</span>
+                      <Button size="sm" variant="outline" onClick={() => handleRunScript(script.id)}>Run</Button>
+                    </div>
                   </div>
                 ))}
                 {scripts.length === 0 && <p className="text-sm text-muted-foreground">No scripts yet.</p>}
               </div>
+              <div className="border-t pt-3">
+                <div className="flex flex-wrap gap-2 items-center justify-between">
+                  <div className="text-sm font-medium text-muted-foreground">Create / edit script</div>
+                  <div className="flex flex-wrap gap-2 items-center justify-end">
+                    <select
+                      className="h-10 rounded-md border border-input bg-background px-3 text-sm min-w-[160px]"
+                      value={selectedScriptId || ''}
+                      onChange={(e) => handleSelectScript(e.target.value)}
+                    >
+                      <option value="">New script...</option>
+                      {scripts.map((s) => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                    </select>
+                    <Input
+                      value={scriptName}
+                      onChange={(e) => setScriptName(e.target.value)}
+                      className="w-44"
+                      placeholder="build.sh"
+                    />
+                    {editMode ? (
+                      <div className="flex gap-2">
+                        <Button size="sm" className="bg-black text-white hover:bg-slate-900" onClick={handleSaveScript}>Save</Button>
+                        <Button size="sm" variant="outline" onClick={handleCancelEdit}>Cancel</Button>
+                      </div>
+                    ) : (
+                      <Button size="sm" className="bg-black text-white hover:bg-slate-900" onClick={handleSaveScript}>Add</Button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-xl border bg-card p-4 space-y-4">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <h3 className="font-semibold flex items-center gap-2"><Layers size={16} /> Tech stacks</h3>
+                  <p className="text-sm text-muted-foreground">Frameworks, runtimes, and build tools detected for this project.</p>
+                </div>
+                <span className="inline-flex items-center justify-center gap-1 text-xs px-3 py-1 min-w-[96px] rounded-full border bg-muted/50 text-foreground/80 shadow-sm">
+                  <Layers size={12} /> {techStacks.length} items
+                </span>
+              </div>
+              {techStacks.length === 0 ? (
+                <div className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground bg-muted/30">
+                  No tech stack captured yet. Add a package.json or configure detection in the Scripts tab.
+                </div>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {techStacks.map((stack) => (
+                    <div key={stack.id} className="rounded-lg border p-3 bg-muted/30 space-y-2 shadow-sm">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="font-semibold flex items-center gap-2"><Layers size={14} /> {stack.name}</div>
+                        {stack.version && <span className="text-[11px] px-2 py-1 rounded-full border bg-white text-muted-foreground">{stack.version}</span>}
+                      </div>
+                      <div className="text-xs text-muted-foreground capitalize leading-tight">{stack.category || 'Uncategorized'}</div>
+                      <div className="flex flex-wrap gap-2 text-[11px]">
+                        {stack.source && <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full border bg-white text-muted-foreground"><Github size={12} /> {stack.source}</span>}
+                        {typeof stack.confidence === 'number' && <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full border bg-white text-muted-foreground">{stack.confidence}% confidence</span>}
+                      </div>
+                      {stack.notes && <p className="text-xs text-muted-foreground">{stack.notes}</p>}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
@@ -1388,11 +1469,15 @@ const ProjectDetailPage = () => {
                     <span>{finding.createdAt}</span>
                     <span className="uppercase font-semibold">{finding.status}</span>
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Button size="sm" variant="outline" onClick={() => { goToTab('testing'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>Fix it</Button>
-                    <Button size="sm" variant="outline" onClick={() => handleViewLogs(finding)}><Link2 size={12} className="mr-1" /> View logs</Button>
-                    <Button size="sm" variant="ghost" onClick={() => setSelectedFinding(finding)}>View details</Button>
-                    <Button size="sm" variant="ghost" onClick={() => openSubmit(finding)}>Submit</Button>
+                  <div className="flex flex-col gap-2">
+                    <div className="flex flex-wrap gap-2 justify-end">
+                      <Button size="sm" variant="outline" onClick={() => { goToTab('testing'); window.scrollTo({ top: 0, behavior: 'smooth' }); }}>Fix it</Button>
+                      <Button size="sm" variant="outline" className="gap-1" onClick={() => handleViewLogs(finding)}><Link2 size={12} /> Logs</Button>
+                    </div>
+                    <div className="flex flex-wrap gap-2 justify-end">
+                      <Button size="sm" variant="secondary" className="gap-1" onClick={() => setSelectedFinding(finding)}><Eye size={12} /> Details</Button>
+                      <Button size="sm" className="gap-1 bg-black text-white hover:bg-slate-900" onClick={() => openSubmit(finding)}><Send size={12} /> Submit</Button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -1417,7 +1502,7 @@ const ProjectDetailPage = () => {
               <p className="text-xs text-muted-foreground">Create Projects supports two types: repo-linked (no uploads) and blank projects (upload folder or link repo later). Indexing is required before Testing to view and rerun suites.</p>
               <div className="flex flex-wrap gap-2">
                   <Button variant="outline" size="sm" onClick={() => goToTab('indexing')}>Index repo/folder</Button>
-                <Button variant="outline" size="sm" onClick={() => goToTab('testing')}>Open canvas</Button>
+                <Button variant="outline" size="sm" onClick={() => setShowCanvasDrawer(true)}>Open canvas</Button>
                 <Button variant="outline" size="sm" onClick={() => setShowSdlcDrawer(true)}>Open sdlc.md</Button>
                 </div>
               </div>
@@ -1474,8 +1559,9 @@ const ProjectDetailPage = () => {
                   const pending = step?.pending_actions || [];
                   const isCollapsed = collapsedPhases[phase.id];
                   return (
-                    <div key={phase.id} className="rounded-lg border bg-muted/20 p-4 space-y-3">
-                      <div className="h-px bg-border" />
+                    <div key={phase.id} className="relative rounded-lg border bg-muted/20 p-4 pt-5 space-y-3 overflow-hidden">
+                      <div className="absolute inset-x-0 top-0 h-px bg-border" />
+                      <div className="absolute inset-x-0 bottom-0 h-px bg-border" />
                       <div className="flex items-start justify-between gap-2">
                         <button
                           type="button"
@@ -1514,7 +1600,6 @@ const ProjectDetailPage = () => {
                           )}
                         </div>
                       )}
-                      <div className="h-px bg-border" />
                     </div>
                   );
                 })}
@@ -1759,19 +1844,29 @@ const ProjectDetailPage = () => {
 
             {isDemo && (
               <div className="rounded-lg border bg-muted/20 p-3 space-y-2">
-                <div className="font-semibold text-sm">Demo codebases</div>
+                <div className="font-semibold text-sm flex items-center gap-2"><Github size={14} /> Demo codebases</div>
                 <div className="grid sm:grid-cols-2 gap-2">
                   {[
-                    { name: 'opsnest/frontend', branch: 'main', status: 'Completed', lastIndexed: 'Today 10:15' },
-                    { name: 'opsnest/backend', branch: 'develop', status: 'Completed', lastIndexed: 'Today 09:42' },
+                    { name: 'opsnest/frontend', branch: 'main', status: 'Completed', lastIndexed: 'Today 10:15', files: '1,420 files', images: '58 images', repoUrl: 'https://github.com/js713-lab/opsNest-frontend', primary: 'Next.js + Tailwind' },
+                    { name: 'opsnest/backend', branch: 'develop', status: 'Completed', lastIndexed: 'Today 09:42', files: '980 files', images: '21 images', repoUrl: 'https://github.com/js713-lab/opsNest-backend', primary: 'Node.js + Supabase' },
                   ].map((demo) => (
                     <div key={demo.name} className="rounded-md border border-border bg-background p-2 text-xs space-y-1">
-                      <div className="flex items-center justify-between">
-                        <span className="font-semibold">{demo.name}</span>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-semibold flex items-center gap-1"><Github size={12} /> {demo.name}</span>
                         <span className="text-[10px] uppercase text-emerald-700">{demo.status}</span>
                       </div>
                       <div className="text-muted-foreground">Branch: {demo.branch}</div>
                       <div className="text-muted-foreground">Indexed at {demo.lastIndexed}</div>
+                      <div className="flex flex-wrap gap-2 text-[11px]">
+                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full border bg-white text-muted-foreground"><FileText size={12} /> {demo.files}</span>
+                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full border bg-white text-muted-foreground"><Image size={12} /> {demo.images}</span>
+                        {demo.primary && <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full border bg-white text-muted-foreground"><Tag size={12} /> {demo.primary}</span>}
+                        {demo.repoUrl && (
+                          <a className="inline-flex items-center gap-1 px-2 py-1 rounded-full border bg-white text-primary hover:underline" href={demo.repoUrl} target="_blank" rel="noreferrer">
+                            <Link2 size={12} /> GitHub
+                          </a>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -1781,111 +1876,116 @@ const ProjectDetailPage = () => {
         </TabsContent>
 
         <TabsContent value="testing">
-          <div className="rounded-xl border bg-card p-4 space-y-4">
-            <div className="flex flex-wrap items-center gap-2 justify-between">
-              <div>
-                <h3 className="font-semibold">Testing</h3>
-                <p className="text-sm text-muted-foreground">Unit, integration, and E2E results.</p>
-              </div>
-              <div className="flex flex-wrap gap-2 justify-end">
-                <Input value={testName} onChange={(e) => setTestName(e.target.value)} className="w-40" placeholder="TC_smoke_001" />
-                <select
-                  className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-                  value={testStatus}
-                  onChange={(e) => setTestStatus(e.target.value as any)}
-                >
-                  <option value="PASSED">PASSED</option>
-                  <option value="FAILED">FAILED</option>
-                  <option value="RUNNING">RUNNING</option>
-                  <option value="PENDING">PENDING</option>
-                </select>
-                <Button size="sm" onClick={handleAddTestResult}><Wrench className="mr-2 h-4 w-4" /> Add</Button>
-                <Button size="sm" variant="outline" onClick={handleRerunSuite}><RefreshCcw className="mr-2 h-4 w-4" /> Rerun suite</Button>
-              </div>
-            </div>
-            <div className="rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground flex items-center gap-2">
-              <Layers size={14} /> Indexing must complete before all test artifacts are viewable/rerunnable. Cron rescan (Indexing tab) refreshes this table automatically based on file growth.
-              <Button variant="ghost" size="sm" className="ml-auto" onClick={() => goToTab('indexing')}>Go to indexing</Button>
-            </div>
-
-            <div className="flex flex-wrap gap-2 items-center justify-between">
-              <div className="flex flex-wrap gap-2 items-center">
-                <Input
-                  value={testSearch}
-                  onChange={(e) => setTestSearch(e.target.value)}
-                  className="w-56"
-                  placeholder="Search test cases..."
-                />
-                <select
-                  className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-                  value={testModuleFilter}
-                  onChange={(e) => setTestModuleFilter(e.target.value)}
-                >
-                  <option value="all">All modules</option>
-                  {testModuleOptions.map((m) => (
-                    <option key={m} value={m}>{m}</option>
-                  ))}
-                </select>
-                <select
-                  className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-                  value={testStatusFilter}
-                  onChange={(e) => setTestStatusFilter(e.target.value)}
-                >
-                  <option value="all">All status</option>
-                  <option value="PASSED">Passed</option>
-                  <option value="FAILED">Failed</option>
-                  <option value="RUNNING">Running</option>
-                  <option value="PENDING">Pending</option>
-                  <option value="PENDING REVIEW">Pending review</option>
-                </select>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button size="sm" variant="outline" onClick={addTemplateTests}>Add default templates</Button>
-                <Button size="sm" className="bg-black text-white hover:bg-slate-900">Run all tests</Button>
-              </div>
-            </div>
-
-            <div className="rounded-xl border bg-card">
-              <div className="w-full flex items-center justify-between px-4 py-3">
+          <div className="space-y-4">
+            <div className="rounded-xl border bg-card p-4 space-y-4">
+              <div className="flex flex-wrap items-center gap-2 justify-between">
                 <div>
-                  <h4 className="font-semibold">Default templates</h4>
-                  <p className="text-sm text-muted-foreground">Reusable checks for images, dark mode, translation, mobile responsive.</p>
+                  <h3 className="font-semibold">Testing</h3>
+                  <p className="text-sm text-muted-foreground">Unit, integration, and E2E results.</p>
                 </div>
-                <div className="flex gap-2">
-                  <Button size="sm" variant="ghost" onClick={() => setShowTemplates((v) => !v)}>
-                    {showTemplates ? 'Hide' : 'Show'}
-                  </Button>
-                </div>
+                <Button size="sm" variant="outline" onClick={() => goToTab('indexing')}><RefreshCcw className="mr-2 h-4 w-4" /> Go to indexing</Button>
               </div>
-              {showTemplates && (
-                <div className="border-t p-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex flex-wrap gap-2">
-                      {defaultCheckColumns.map((col) => (
-                        <span key={col} className="text-[11px] px-2 py-1 rounded-full border bg-white text-muted-foreground">
-                          {col}
-                        </span>
+              <div className="rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground flex items-center gap-2">
+                <Layers size={14} /> Indexing must complete before all test artifacts are viewable/rerunnable. Cron rescan (Indexing tab) refreshes this table automatically based on file growth.
+              </div>
+
+              <div className="rounded-xl border bg-card">
+                <div className="w-full flex items-center justify-between px-4 py-3">
+                  <div>
+                    <h4 className="font-semibold">Default templates</h4>
+                    <p className="text-sm text-muted-foreground">Reusable checks for images, dark mode, translation, mobile responsive.</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="ghost" onClick={() => setShowTemplates((v) => !v)}>
+                      {showTemplates ? 'Hide' : 'Show'}
+                    </Button>
+                  </div>
+                </div>
+                {showTemplates && (
+                  <div className="border-t p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex flex-wrap gap-2">
+                        {defaultCheckColumns.map((col) => (
+                          <span key={col} className="text-[11px] px-2 py-1 rounded-full border bg-white text-muted-foreground">
+                            {col}
+                          </span>
+                        ))}
+                      </div>
+                      <Button size="sm" variant="outline" onClick={() => handleApplyTemplate(defaultModuleTemplates[0])}>Quick add</Button>
+                    </div>
+                    <div className="grid gap-2 md:grid-cols-2">
+                      {defaultModuleTemplates.map((tmpl) => (
+                        <div key={tmpl.title} className="rounded-lg border p-3 bg-muted/30 flex items-center justify-between">
+                          <div>
+                            <div className="font-semibold text-sm">{tmpl.title}</div>
+                            <div className="text-xs text-muted-foreground">{tmpl.scenario}</div>
+                            <div className="text-[11px] text-muted-foreground">Module: {tmpl.module}</div>
+                          </div>
+                          <Button size="sm" variant="outline" onClick={() => handleApplyTemplate(tmpl)}>Add</Button>
+                        </div>
                       ))}
                     </div>
-                    <Button size="sm" variant="outline" onClick={() => handleApplyTemplate(defaultModuleTemplates[0])}>Quick add</Button>
                   </div>
-                  <div className="grid gap-2 md:grid-cols-2">
-                    {defaultModuleTemplates.map((tmpl) => (
-                      <div key={tmpl.title} className="rounded-lg border p-3 bg-muted/30 flex items-center justify-between">
-                        <div>
-                          <div className="font-semibold text-sm">{tmpl.title}</div>
-                          <div className="text-xs text-muted-foreground">{tmpl.scenario}</div>
-                          <div className="text-[11px] text-muted-foreground">Module: {tmpl.module}</div>
-                        </div>
-                        <Button size="sm" variant="outline" onClick={() => handleApplyTemplate(tmpl)}>Add</Button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
 
-              <div className="rounded-xl border overflow-auto">
+            <div className="rounded-xl border bg-card overflow-hidden">
+              <div className="px-4 py-3 border-b flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h4 className="font-semibold">Test cases</h4>
+                  <p className="text-xs text-muted-foreground">Filters and quick adds stay bundled with the results.</p>
+                </div>
+              </div>
+              <div className="px-4 py-3 border-b flex flex-wrap items-center gap-3 justify-between">
+                <div className="flex flex-wrap gap-2 items-center">
+                  <Input
+                    value={testSearch}
+                    onChange={(e) => setTestSearch(e.target.value)}
+                    className="w-56"
+                    placeholder="Search test cases..."
+                  />
+                  <select
+                    className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                    value={testModuleFilter}
+                    onChange={(e) => setTestModuleFilter(e.target.value)}
+                  >
+                    <option value="all">All modules</option>
+                    {testModuleOptions.map((m) => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                  <select
+                    className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                    value={testStatusFilter}
+                    onChange={(e) => setTestStatusFilter(e.target.value)}
+                  >
+                    <option value="all">All status</option>
+                    <option value="PASSED">Passed</option>
+                    <option value="FAILED">Failed</option>
+                    <option value="RUNNING">Running</option>
+                    <option value="PENDING">Pending</option>
+                    <option value="PENDING REVIEW">Pending review</option>
+                  </select>
+                </div>
+                <div className="flex flex-wrap gap-2 justify-end">
+                  <Input value={testName} onChange={(e) => setTestName(e.target.value)} className="w-40" placeholder="TC_smoke_001" />
+                  <select
+                    className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                    value={testStatus}
+                    onChange={(e) => setTestStatus(e.target.value as any)}
+                  >
+                    <option value="PASSED">PASSED</option>
+                    <option value="FAILED">FAILED</option>
+                    <option value="RUNNING">RUNNING</option>
+                    <option value="PENDING">PENDING</option>
+                  </select>
+                  <Button size="sm" onClick={handleAddTestResult}><Wrench className="mr-2 h-4 w-4" /> Add</Button>
+                  <Button size="sm" variant="outline" onClick={addTemplateTests}>Add default templates</Button>
+                  <Button size="sm" className="bg-black text-white hover:bg-slate-900">Run all tests</Button>
+                </div>
+              </div>
+              <div className="overflow-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
                     <tr className="[&>th]:px-3 [&>th]:py-2 [&>th]:text-left">
@@ -1922,6 +2022,7 @@ const ProjectDetailPage = () => {
                   </tbody>
                 </table>
               </div>
+            </div>
           </div>
         </TabsContent>
 
@@ -1967,7 +2068,7 @@ const ProjectDetailPage = () => {
         </TabsContent>
       </Tabs>
       {selectedFinding && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-start justify-end">
+        <div className="fixed inset-0 w-screen h-screen z-50 m-0 p-0 !mt-0 !pt-0 bg-black/40 backdrop-blur-sm flex items-stretch justify-end">
           <div className="bg-white dark:bg-slate-900 w-full max-w-2xl h-full overflow-y-auto shadow-2xl p-6 border-l border-border relative animate-in slide-in-from-right duration-200">
             <button className="absolute right-4 top-4 text-muted-foreground hover:text-foreground" onClick={() => setSelectedFinding(null)}>
               <X size={18} />
@@ -1986,6 +2087,22 @@ const ProjectDetailPage = () => {
               <span className={`text-[11px] px-2 py-1 rounded-full border ${severityBadge(selectedFinding.severity)}`}>{selectedFinding.severity}</span>
               <span className="text-[11px] px-2 py-1 rounded-full border bg-muted text-muted-foreground uppercase">{selectedFinding.status}</span>
             </div>
+            <div className="mt-4 grid sm:grid-cols-2 gap-3">
+              <div className="rounded-md border bg-muted/20 p-3 space-y-2">
+                <p className="text-xs text-muted-foreground">Created</p>
+                <p className="text-sm font-semibold">{selectedFinding.createdAt}</p>
+              </div>
+              <div className="rounded-md border bg-muted/20 p-3 space-y-2">
+                <p className="text-xs text-muted-foreground">Tags</p>
+                <div className="flex flex-wrap gap-2">
+                  {selectedFinding.tags.map((tag) => (
+                    <span key={tag} className="text-[11px] px-2 py-1 rounded-full border bg-muted text-muted-foreground">
+                      #{tag}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
             <p className="mt-4 leading-relaxed text-sm">{selectedFinding.message}</p>
             <div className="mt-3 text-sm text-muted-foreground space-y-2">
               <div className="flex items-center gap-2">
@@ -1999,16 +2116,6 @@ const ProjectDetailPage = () => {
                 )}
               </div>
             </div>
-            <div className="mt-4 space-y-2">
-              <p className="text-xs uppercase text-muted-foreground">Tags</p>
-              <div className="flex flex-wrap gap-2">
-                {selectedFinding.tags.map((tag) => (
-                  <span key={tag} className="text-[11px] px-2 py-1 rounded-full border bg-muted text-muted-foreground">
-                    #{tag}
-                  </span>
-                ))}
-              </div>
-            </div>
             <div className="mt-6 flex flex-wrap gap-2">
               <Button onClick={() => { goToTab('testing'); setSelectedFinding(null); }}>Fix it</Button>
               <Button variant="outline" onClick={() => handleViewLogs(selectedFinding)}>View logs</Button>
@@ -2018,9 +2125,52 @@ const ProjectDetailPage = () => {
         </div>
       )}
 
+      {logDrawerFinding && (
+        <div className="fixed inset-0 w-screen h-screen z-50 m-0 p-0 !mt-0 !pt-0 bg-black/40 backdrop-blur-sm flex items-stretch justify-end">
+          <div className="bg-white dark:bg-slate-900 w-full max-w-xl h-screen overflow-y-auto shadow-2xl p-6 border-l border-border relative animate-in slide-in-from-right duration-200">
+            <button className="absolute right-4 top-4 text-muted-foreground hover:text-foreground" onClick={() => setLogDrawerFinding(null)}>
+              <X size={18} />
+            </button>
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Link2 size={14} />
+              Logs & diagnostics
+            </div>
+            <h2 className="text-xl font-bold mt-2">{logDrawerFinding.title}</h2>
+            <div className="flex flex-wrap gap-2 mt-3">
+              <span className={`text-[11px] px-2 py-1 rounded-full border ${severityBadge(logDrawerFinding.severity)}`}>{logDrawerFinding.severity}</span>
+              <span className="text-[11px] px-2 py-1 rounded-full border bg-muted text-muted-foreground uppercase">{logDrawerFinding.status}</span>
+              <span className="text-[11px] px-2 py-1 rounded-full border bg-muted text-muted-foreground flex items-center gap-1">
+                <GitBranch size={12} /> {logDrawerFinding.branch}
+              </span>
+            </div>
+            <div className="mt-4 space-y-3">
+              <div className="rounded-md border bg-muted/30 p-3 space-y-2">
+                <p className="text-xs text-muted-foreground">Log source</p>
+                {logDrawerFinding.logsUrl ? (
+                  <a className="text-sm underline text-primary break-all" href={logDrawerFinding.logsUrl} target="_blank" rel="noreferrer">
+                    {logDrawerFinding.logsUrl}
+                  </a>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No log URL attached. Showing captured context instead.</p>
+                )}
+              </div>
+              <div className="rounded-md border bg-card p-3">
+                <p className="text-xs text-muted-foreground mb-2">Excerpt</p>
+                <pre className="text-xs whitespace-pre-wrap leading-relaxed text-foreground">{logDrawerFinding.message || 'No log content available.'}</pre>
+              </div>
+            </div>
+            <div className="mt-6 flex flex-wrap gap-2 justify-end">
+              <Button variant="ghost" onClick={() => setLogDrawerFinding(null)}>Close</Button>
+              <Button variant="outline" onClick={() => { setSelectedFinding(logDrawerFinding); setLogDrawerFinding(null); }}>View details</Button>
+              <Button onClick={() => { openSubmit(logDrawerFinding); setLogDrawerFinding(null); }}>Submit to marketplace</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showSubmitModal && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-start justify-center overflow-y-auto">
-          <div className="bg-white dark:bg-slate-900 w-full max-w-4xl mt-10 mb-10 rounded-xl shadow-2xl border border-border p-6 relative">
+        <div className="fixed inset-0 w-screen h-screen z-50 m-0 p-0 !mt-0 !pt-0 bg-black/50 backdrop-blur-sm flex items-center justify-center overflow-hidden">
+          <div className="bg-white dark:bg-slate-900 w-full max-w-5xl h-[92vh] mx-4 sm:mx-8 lg:mx-12 rounded-xl shadow-2xl border border-border p-6 relative overflow-y-auto">
             <button className="absolute right-4 top-4 text-muted-foreground hover:text-foreground" onClick={() => setShowSubmitModal(false)}>
               <X size={18} />
             </button>
@@ -2124,8 +2274,8 @@ const ProjectDetailPage = () => {
       )}
 
       {showSdlcDrawer && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-stretch justify-end" style={{ marginTop: 0 }}>
-          <div className="bg-white dark:bg-slate-900 w-full max-w-xl h-full overflow-y-auto shadow-2xl p-6 border-l border-border relative animate-in slide-in-from-right duration-200">
+        <div className="fixed inset-0 w-screen h-screen z-50 m-0 p-0 !mt-0 !pt-0 bg-black/40 backdrop-blur-sm flex items-stretch justify-end">
+          <div className="bg-white dark:bg-slate-900 w-full max-w-xl h-screen overflow-y-auto shadow-2xl p-6 border-l border-border relative animate-in slide-in-from-right duration-200">
             <button className="absolute right-4 top-4 text-muted-foreground hover:text-foreground" onClick={() => setShowSdlcDrawer(false)}>
               <X size={18} />
             </button>
@@ -2165,6 +2315,23 @@ const ProjectDetailPage = () => {
                   onChange={(e) => setSdlcPrompt(e.target.value)}
                 />
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showCanvasDrawer && (
+        <div className="fixed inset-0 w-screen h-screen z-50 m-0 p-0 !mt-0 !pt-0 bg-black/40 backdrop-blur-sm flex items-stretch justify-end">
+          <div className="bg-white dark:bg-slate-900 w-full max-w-6xl h-full overflow-hidden shadow-2xl border-l border-border relative animate-in slide-in-from-right duration-200 flex flex-col">
+            <div className="flex items-center justify-between gap-4 px-4 pb-2 pt-0">
+              <div className="min-w-0">
+                <h3 className="text-xl font-semibold">SDLC canvas</h3>
+                <p className="text-sm text-muted-foreground">Drag nodes, connect flows, switch views. Saves to Supabase when authenticated.</p>
+              </div>
+              <Button variant="outline" onClick={() => setShowCanvasDrawer(false)}>Close</Button>
+            </div>
+            <div className="flex-1 min-h-0 overflow-auto px-4 pb-4 pt-0">
+              <SdlcWorkflowCanvas projectId={project?.id || undefined} />
             </div>
           </div>
         </div>

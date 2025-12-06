@@ -8,6 +8,7 @@
     "build": "tsc && vite build",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
+    "test": "vitest run",
     "github-proxy": "node server/github-oauth-proxy.js",
     "coderabbit-proxy": "node server/coderabbit-proxy.js"
   },
@@ -29,6 +30,7 @@
     "react-hook-form": "^7.50.1",
     "react-i18next": "^14.0.1",
     "react-router-dom": "^6.22.0",
+    "reactflow": "^11.11.4",
     "sonner": "^2.0.7",
     "tailwind-merge": "^2.2.1",
     "three": "^0.181.2",
@@ -49,6 +51,7 @@
     "tailwindcss": "^3.4.1",
     "typescript": "^5.2.2",
     "vite": "^5.1.0",
-    "vite-plugin-pwa": "^0.18.2"
+    "vite-plugin-pwa": "^0.18.2",
+    "vitest": "^4.0.15"
   }
 }

@@ -53,6 +53,19 @@ export interface Script {
   updated_at?: string;
 }
 
+export interface TechStack {
+  id: string;
+  project_id: string;
+  name: string;
+  category?: string | null;
+  version?: string | null;
+  source?: string | null;
+  confidence?: number | null;
+  notes?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
 export interface ScriptRun {
   id: string;
   project_id: string;
@@ -105,6 +118,23 @@ export interface ProjectSdlcStep {
   status: 'pending' | 'in_progress' | 'done';
   pending_actions?: string[] | null;
   artifacts?: Record<string, any> | null;
+  updated_at?: string | null;
+}
+
+export type SdlcWorkflowViewMode = 'workflow' | 'diagram' | 'gantt';
+
+export interface SdlcWorkflow {
+  id: string;
+  project_id: string;
+  name: string;
+  view_mode: SdlcWorkflowViewMode;
+  data: {
+    nodes: any[];
+    edges: any[];
+    meta?: Record<string, any>;
+  };
+  version?: number;
+  created_at?: string | null;
   updated_at?: string | null;
 }
 
@@ -312,6 +342,17 @@ export async function upsertScript(script: Partial<Script> & { project_id: strin
   return data as Script;
 }
 
+// Tech stacks per project
+export async function listTechStacks(projectId: string) {
+  const { data, error } = await supabase
+    .from('tech_stacks')
+    .select('*')
+    .eq('project_id', projectId)
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return data as TechStack[];
+}
+
 export async function createScriptRun(projectId: string, scriptId?: string) {
   const { data, error } = await supabase
     .from('script_runs')
@@ -419,6 +460,39 @@ export async function upsertSdlcStep(payload: Partial<ProjectSdlcStep> & { proje
     .single();
   if (error) throw error;
   return data as ProjectSdlcStep;
+}
+
+// SDLC workflow canvas
+export async function getSdlcWorkflow(projectId: string) {
+  const { data, error } = await supabase
+    .from('sdlc_workflows')
+    .select('*')
+    .eq('project_id', projectId)
+    .maybeSingle();
+  if (error) throw error;
+  return data as SdlcWorkflow | null;
+}
+
+export async function saveSdlcWorkflow(
+  projectId: string,
+  payload: Partial<Omit<SdlcWorkflow, 'id' | 'project_id'>> & { data: any }
+) {
+  const { data, error } = await supabase
+    .from('sdlc_workflows')
+    .upsert(
+      {
+        project_id: projectId,
+        name: payload.name || 'SDLC workflow',
+        view_mode: payload.view_mode || 'workflow',
+        data: payload.data,
+        version: payload.version,
+      },
+      { onConflict: 'project_id' }
+    )
+    .select()
+    .single();
+  if (error) throw error;
+  return data as SdlcWorkflow;
 }
 
 // Indexing configuration
