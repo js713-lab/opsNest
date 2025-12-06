@@ -57,13 +57,6 @@ const IntegrationsPage = () => {
       icon: Rabbit,
       connected: false
     },
-    {
-      id: 'gemini',
-      name: 'Gemini (Google AI)',
-      description: 'Multimodal models (text, image, video) for prompts and embeddings.',
-      icon: Bot,
-      connected: false
-    },
     // Placeholder for other integrations to match the grid look
     {
       id: 'smtp',
@@ -94,11 +87,14 @@ const IntegrationsPage = () => {
     username: '',
     password: '',
     fromEmail: '',
+    authMethod: 'ssl' as 'ssl' | 'tls' | 'none',
+    testEmail: '',
   });
   const [isLoading, setIsLoading] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'connected' | 'disconnected'>('all');
+  const [userId, setUserId] = useState<string | null>(null);
 
   const LOCAL_CONFIG_KEY = 'integrations_config_local';
 
@@ -118,16 +114,24 @@ const IntegrationsPage = () => {
   };
 
   useEffect(() => {
-    fetchIntegrations();
+    const init = async () => {
+      const { data: auth } = await supabase.auth.getUser();
+      if (!auth.user) {
+        setUserId(null);
+      } else {
+        setUserId(auth.user.id);
+      }
+      fetchIntegrations(auth.user?.id || null);
+    };
+    init();
   }, []);
 
-  const fetchIntegrations = async () => {
+  const fetchIntegrations = async (uid: string | null = userId) => {
     // In a real app, we would get the current user's ID
     // For this demo, we'll just fetch all configs or mock it if table doesn't exist yet
     try {
-      const { data, error } = await supabase
-        .from('integrations_config')
-        .select('*');
+      const query = supabase.from('integrations_config').select('*');
+      const { data, error } = uid ? await query.eq('user_id', uid) : await query;
 
       if (data) {
         setIntegrations(prev => prev.map(integration => {
@@ -200,6 +204,8 @@ const IntegrationsPage = () => {
       username: '',
       password: '',
       fromEmail: '',
+      authMethod: 'ssl' as 'ssl' | 'tls' | 'none',
+      testEmail: '',
     };
     // Load existing config if available
     if (integration.config) {
@@ -214,6 +220,8 @@ const IntegrationsPage = () => {
         username: integration.config.username || '',
         password: integration.config.password || '',
         fromEmail: integration.config.fromEmail || '',
+        authMethod: integration.config.authMethod || 'ssl',
+        testEmail: integration.config.testEmail || '',
       });
     } else {
       setConfigForm(defaultConfig);
@@ -223,11 +231,16 @@ const IntegrationsPage = () => {
 
   const handleSaveConfig = async () => {
     if (!selectedIntegration) return;
+    if (!userId) {
+      toast.error('Please sign in to save integrations.');
+      return;
+    }
     setIsLoading(true);
     const requiresApiKey = !['smtp', 'github'].includes(selectedIntegration.id);
     const resolvedConfig = {
       ...configForm,
       apiKey: configForm.apiKey || ENV_DEFAULTS[selectedIntegration.id] || '',
+      user_id: userId,
     };
 
     if (requiresApiKey && !resolvedConfig.apiKey) {
@@ -243,8 +256,9 @@ const IntegrationsPage = () => {
           provider: selectedIntegration.id,
           config: resolvedConfig,
           is_active: true,
+          user_id: userId,
           updated_at: new Date().toISOString(),
-        }, { onConflict: 'provider' }); // Assuming provider is unique per user or we handle user_id
+        }, { onConflict: 'user_id,provider' });
 
       if (error) throw error;
 
@@ -298,6 +312,21 @@ const IntegrationsPage = () => {
           baseUrl: configForm.baseUrl || undefined,
         });
         toast.success('Gemini responded to the health check.');
+      } else if (provider === 'smtp') {
+        if (!configForm.host || !configForm.port || !configForm.username || !configForm.password) {
+          throw new Error('Host, port, username, and password are required for SMTP test.');
+        }
+        const payload = {
+          host: configForm.host,
+          port: Number(configForm.port),
+          username: configForm.username,
+          password: configForm.password,
+          fromEmail: configForm.fromEmail || configForm.username,
+          toEmail: configForm.testEmail || configForm.fromEmail || configForm.username,
+          authMethod: configForm.authMethod,
+        };
+        console.info('SMTP test payload (client-side only demo):', payload);
+        toast.success(`Would send test email to ${payload.toEmail}. (Hook backend SMTP test here.)`);
       } else {
         toast.info('No live test implemented for this integration yet.');
       }
@@ -311,7 +340,11 @@ const IntegrationsPage = () => {
   const handleDisconnectGithub = async () => {
     clearGithubToken();
     try {
-      await supabase.from('integrations_config').delete().eq('provider', 'github');
+      if (userId) {
+        await supabase.from('integrations_config').delete().eq('provider', 'github').eq('user_id', userId);
+      } else {
+        await supabase.from('integrations_config').delete().eq('provider', 'github');
+      }
     } catch (e) {
       console.warn('Could not delete github integration (demo):', e);
     }
@@ -430,46 +463,63 @@ const IntegrationsPage = () => {
              </p>
 
             <div className="flex flex-wrap items-center justify-between gap-3 mt-auto pt-4 border-t border-border">
+              <div className="flex flex-wrap items-center gap-2">
                 {integration.id === 'github' ? (
                   integration.connected ? (
-                    <div className="flex gap-2">
+                    <>
                       <Button variant="outline" size="sm" className="whitespace-nowrap" onClick={handleDisconnectGithub}>
                         <Unplug className="mr-2 h-4 w-4" /> Disconnect
                       </Button>
-                      <Button size="sm" className="whitespace-nowrap" onClick={() => handleConnect(integration)}>
-                        <PlugZap className="mr-2 h-4 w-4" /> Reconnect
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        className="whitespace-nowrap"
+                        onClick={() => handleViewAccount(integration)}
+                      >
+                        <ExternalLink className="mr-2 h-4 w-4" /> View account
                       </Button>
-                    </div>
+                    </>
                   ) : (
                     <Button variant="outline" size="sm" className="whitespace-nowrap" onClick={() => handleConnect(integration)}>
                       <PlugZap className="mr-2 h-4 w-4" /> Connect with GitHub
                     </Button>
                   )
                 ) : (
-                <Button variant="outline" size="sm" className="whitespace-nowrap" onClick={() => handleConnect(integration)}>
-                   {integration.connected ? 'Configure' : '+ Add Account'}
-                </Button>
+                  <>
+                    <Button
+                      variant={integration.connected ? 'default' : 'outline'}
+                      size="sm"
+                      className="whitespace-nowrap"
+                      onClick={() => handleConnect(integration)}
+                    >
+                      {integration.connected ? 'Configure' : '+ Add Account'}
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="whitespace-nowrap"
+                      onClick={() => handleViewAccount(integration)}
+                      disabled={!integration.connected}
+                    >
+                      <ExternalLink className="mr-2 h-4 w-4" /> View account
+                    </Button>
+                  </>
                 )}
-                
-                <div className="flex items-center gap-2">
-                   <button 
-                     onClick={() => handleViewAccount(integration)}
-                     className="text-xs font-semibold text-primary hover:underline disabled:text-muted-foreground"
-                     disabled={!integration.connected}
-                   >
-                     {integration.connected ? 'View account' : 'Connect first'}
-                   </button>
-                   <span className={`text-xs font-medium ${integration.connected ? 'text-primary' : 'text-muted-foreground'}`}>
-                      {integration.connected ? 'Connected' : 'Connect'}
-                   </span>
-                   <button 
-                     onClick={() => handleConnect(integration)}
-                     className={`w-10 h-5 rounded-full transition-colors relative ${integration.connected ? 'bg-primary' : 'bg-muted'}`}
-                   >
-                      <span className={`absolute top-1 w-3 h-3 rounded-full bg-white transition-all ${integration.connected ? 'left-6' : 'left-1'}`} />
-                   </button>
-                </div>
-             </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <span
+                  className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full border ${
+                    integration.connected
+                      ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
+                      : 'text-muted-foreground bg-muted border-border'
+                  }`}
+                >
+                  <Circle size={10} className={integration.connected ? 'text-emerald-500' : 'text-muted-foreground'} />
+                  {integration.connected ? 'Connected' : 'Not connected'}
+                 </span>
+              </div>
+            </div>
           </div>
         ))}
       </div>
@@ -611,6 +661,19 @@ const IntegrationsPage = () => {
                         />
                       </div>
                       <div className="space-y-1">
+                        <label className="text-sm font-medium">Auth / Encryption</label>
+                        <select
+                          className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                          value={configForm.authMethod}
+                          onChange={(e) => setConfigForm({ ...configForm, authMethod: e.target.value as 'ssl' | 'tls' | 'none' })}
+                        >
+                          <option value="ssl">SSL</option>
+                          <option value="tls">TLS/STARTTLS</option>
+                          <option value="none">None</option>
+                        </select>
+                        <p className="text-[10px] text-muted-foreground">Pick the encryption your SMTP server expects.</p>
+                      </div>
+                      <div className="space-y-1">
                         <label className="text-sm font-medium">From Email</label>
                         <Input
                           type="email"
@@ -618,6 +681,16 @@ const IntegrationsPage = () => {
                           onChange={(e) => setConfigForm({ ...configForm, fromEmail: e.target.value })}
                           placeholder="alerts@yourdomain.com"
                         />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-sm font-medium">Test email (optional)</label>
+                        <Input
+                          type="email"
+                          value={configForm.testEmail}
+                          onChange={(e) => setConfigForm({ ...configForm, testEmail: e.target.value })}
+                          placeholder="you@yourdomain.com"
+                        />
+                        <p className="text-[10px] text-muted-foreground">Used for the “Test connection” email.</p>
                       </div>
                       <p className="text-[10px] text-muted-foreground">
                         Your SMTP credentials are encrypted and stored securely.

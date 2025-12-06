@@ -21,16 +21,18 @@ export const Modal = ({ isOpen, onClose, title, children }: ModalProps) => {
         onClick={onClose}
       />
       
-      {/* Content */}
-      <div className="relative z-50 w-full max-w-lg rounded-lg border-2 border-black bg-white p-6 shadow-lg sm:rounded-xl">
-        <div className="flex items-center justify-between mb-6">
-          <h3 className="text-lg font-semibold leading-none tracking-tight">{title}</h3>
-          <Button variant="ghost" size="icon" onClick={onClose} className="h-8 w-8 rounded-md">
-            <X size={18} />
-          </Button>
+      {/* Content wrapper for scrollability */}
+      <div className="relative z-50 w-full h-full flex items-center justify-center p-4 overflow-y-auto">
+        <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-lg border-2 border-black bg-white p-6 shadow-lg sm:rounded-xl">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-lg font-semibold leading-none tracking-tight">{title}</h3>
+            <Button variant="ghost" size="icon" onClick={onClose} className="h-8 w-8 rounded-md">
+              <X size={18} />
+            </Button>
+          </div>
+          
+          {children}
         </div>
-        
-        {children}
       </div>
     </div>,
     document.body

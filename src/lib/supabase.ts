@@ -18,6 +18,7 @@ export interface Environment {
   name: string;
   status: 'RUNNING' | 'IDLE' | 'DOWN';
   url?: string | null;
+  description?: string | null;
   last_deployed_at?: string | null;
 }
 
@@ -145,6 +146,21 @@ export interface SubscriptionSignup {
   created_at?: string | null;
 }
 
+export interface Profile {
+  id: string;
+  full_name?: string | null;
+  avatar_url?: string | null;
+  plan_type?: string | null;
+  updated_at?: string | null;
+}
+
+export interface PipelineTemplate {
+  id: string;
+  project_id: string;
+  stages: string[];
+  updated_at?: string | null;
+}
+
 // Fallback to provided credentials if env vars are missing (prevents blank screen in dev)
 const supabaseUrl =
   import.meta.env.VITE_SUPABASE_URL ||
@@ -209,13 +225,14 @@ export async function listEnvironments(projectId: string) {
   return data as Environment[];
 }
 
-export async function createEnvironment(projectId: string, name: string, url?: string) {
+export async function createEnvironment(projectId: string, name: string, url?: string, description?: string) {
   const { data, error } = await supabase
     .from('environments')
     .insert({
       project_id: projectId,
       name,
       url,
+      description,
       status: 'IDLE',
     })
     .select()
@@ -499,5 +516,121 @@ export async function submitSubscription(email: string, source: string = 'landin
 
   if (error) throw error;
   return data as SubscriptionSignup;
+}
+
+// Pipeline template (stage ordering)
+export async function getPipelineTemplate(projectId: string) {
+  const { data, error } = await supabase
+    .from('pipeline_templates')
+    .select('*')
+    .eq('project_id', projectId)
+    .maybeSingle();
+  if (error) throw error;
+  return data as PipelineTemplate | null;
+}
+
+export async function savePipelineTemplate(projectId: string, stages: string[]) {
+  const { data, error } = await supabase
+    .from('pipeline_templates')
+    .upsert(
+      {
+        project_id: projectId,
+        stages,
+      },
+      { onConflict: 'project_id' }
+    )
+    .select()
+    .single();
+  if (error) throw error;
+  return data as PipelineTemplate;
+}
+
+// Profile & Storage
+export async function getProfile() {
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) return null;
+  
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', auth.user.id)
+    .single();
+    
+  if (error) {
+    console.warn('Error fetching profile:', error);
+    return null; 
+  }
+  return data as Profile;
+}
+
+export async function updateProfile(payload: Partial<Profile>) {
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) throw new Error('Not logged in');
+
+  // Some environments block PATCH via CORS; use upsert (POST) to avoid method issues.
+  const { data, error } = await supabase
+    .from('profiles')
+    .upsert({ id: auth.user.id, ...payload }, { onConflict: 'id' })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data as Profile;
+}
+
+export async function uploadAvatar(file: File) {
+  // Ensure the user is authenticated before uploading
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError) {
+    throw sessionError;
+  }
+  const user = sessionData.session?.user;
+  if (!user) {
+    throw new Error('Not logged in');
+  }
+
+  // Ensure bucket exists (client-side best effort; server migration is recommended)
+  try {
+    const { data: bucket, error: bucketErr } = await supabase.storage.getBucket('avatars');
+    if (!bucket && !bucketErr) {
+      await supabase.storage.createBucket('avatars', { public: true });
+    }
+  } catch (err) {
+    console.warn('Could not verify/create avatars bucket (client-side)', err);
+  }
+
+  const fileExt = file.name.split('.').pop() || 'png';
+  const fileName = `${user.id}-${crypto.randomUUID()}.${fileExt}`;
+  const filePath = `${user.id}/${fileName}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from('avatars')
+    .upload(filePath, file, {
+      cacheControl: '3600',
+      upsert: true,
+      contentType: file.type || 'application/octet-stream',
+    });
+
+  if (uploadError) {
+    // Give clearer guidance when the bucket/policies are missing
+    if (uploadError.message?.toLowerCase().includes('bucket')) {
+      throw new Error('Avatar storage bucket is missing. Run the avatars migration and check bucket policies.');
+    }
+    throw uploadError;
+  }
+
+  // Prefer a public URL; fall back to a long-lived signed URL if the bucket is private
+  const { data: publicUrlData } = supabase.storage.from('avatars').getPublicUrl(filePath);
+  if (publicUrlData?.publicUrl) {
+    return publicUrlData.publicUrl;
+  }
+
+  const { data: signedUrlData, error: signedError } = await supabase.storage
+    .from('avatars')
+    .createSignedUrl(filePath, 60 * 60 * 24 * 365); // 1 year
+  if (signedError || !signedUrlData?.signedUrl) {
+    throw signedError || new Error('Unable to generate avatar URL');
+  }
+  return signedUrlData.signedUrl;
 }
 

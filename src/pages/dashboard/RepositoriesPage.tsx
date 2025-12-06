@@ -112,17 +112,20 @@ const RepositoriesPage = () => {
     <div className="space-y-6">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
+          <div className="flex items-center gap-3">
           <h2 className="text-3xl font-bold tracking-tight">Repositories</h2>
+            {tokenSource && (
+              <span className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded-full border bg-muted text-muted-foreground">
+                <span className="w-2 h-2 rounded-full bg-green-500" />
+                Token: {tokenSource === 'local' ? 'Local storage' : 'Supabase'}
+              </span>
+            )}
+          </div>
           <p className="text-muted-foreground text-sm">
             GitHub repos available to your workspace. Connect GitHub in Integrations to refresh this list.
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {tokenSource && (
-            <span className="text-xs text-muted-foreground">
-              Token source: {tokenSource === 'local' ? 'local storage' : 'Supabase'}
-            </span>
-          )}
           <Button variant="outline" size="sm" onClick={loadRepos} disabled={loading}>
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
             <span className="ml-2">Refresh</span>

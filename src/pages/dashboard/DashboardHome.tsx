@@ -148,6 +148,7 @@ const DashboardHome = () => {
       </div>
 
       {/* Recent Activity */}
+      <div className="grid gap-4 md:grid-cols-2">
       <div className="rounded-xl border bg-card text-card-foreground shadow-sm">
         <div className="flex flex-col space-y-1.5 p-6">
           <h3 className="text-lg font-semibold leading-none tracking-tight flex items-center gap-2">
@@ -174,6 +175,34 @@ const DashboardHome = () => {
               </div>
                 ))
             )}
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-xl border bg-card text-card-foreground shadow-sm">
+            <div className="flex flex-col space-y-1.5 p-6">
+                <h3 className="text-lg font-semibold leading-none tracking-tight flex items-center gap-2">
+                    <AlertCircle className="h-5 w-5" /> Alerts
+                </h3>
+                 <p className="text-sm text-muted-foreground">System notifications and warnings</p>
+            </div>
+            <div className="p-6 pt-0">
+                <div className="space-y-4">
+                    <div className="flex items-start gap-3 p-3 rounded-lg border border-yellow-200 bg-yellow-50 dark:bg-yellow-900/20 dark:border-yellow-800">
+                         <AlertCircle className="h-5 w-5 text-yellow-600 dark:text-yellow-500 shrink-0 mt-0.5" />
+                         <div>
+                             <h4 className="text-sm font-semibold text-yellow-800 dark:text-yellow-500">Plan Limit Approaching</h4>
+                             <p className="text-xs text-yellow-700 dark:text-yellow-400 mt-1">You have used 80% of your pipeline minutes this month.</p>
+                         </div>
+                    </div>
+                    <div className="flex items-start gap-3 p-3 rounded-lg border border-blue-200 bg-blue-50 dark:bg-blue-900/20 dark:border-blue-800">
+                         <CheckCircle2 className="h-5 w-5 text-blue-600 dark:text-blue-500 shrink-0 mt-0.5" />
+                         <div>
+                             <h4 className="text-sm font-semibold text-blue-800 dark:text-blue-500">System Update</h4>
+                             <p className="text-xs text-blue-700 dark:text-blue-400 mt-1">Maintenance scheduled for Saturday 2 AM UTC.</p>
+                         </div>
+                    </div>
+                </div>
           </div>
         </div>
       </div>
@@ -181,10 +210,10 @@ const DashboardHome = () => {
       {/* Quick Actions */}
        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           {[
-            { name: 'View Analytics', action: () => navigate('/dashboard/reports') },
-            { name: 'Manage Team', action: () => navigate('/dashboard/settings') },
-            { name: 'Project Settings', action: () => navigate('/dashboard/projects') },
-            { name: 'Billing', action: () => navigate('/dashboard/settings') }
+            { name: 'View Projects', action: () => navigate('/dashboard/projects') },
+            { name: 'View Messages', action: () => navigate('/dashboard/messages') },
+            { name: 'Manage Repositories', action: () => navigate('/dashboard/repositories') },
+            { name: 'Integrations Settings', action: () => navigate('/dashboard/integrations') }
           ].map((item) => (
             <Button key={item.name} variant="outline" className="h-24 flex flex-col gap-2" onClick={item.action}>
                {item.name}

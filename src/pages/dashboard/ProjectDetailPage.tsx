@@ -33,9 +33,11 @@ import {
   upsertIndexingConfig,
   upsertNotificationSettings,
   upsertScript,
-  upsertSdlcStep
+  upsertSdlcStep,
+  getPipelineTemplate,
+  savePipelineTemplate
 } from '@/lib/supabase';
-import { AlertCircle, Bell, CalendarClock, Clock, Folder, GitBranch, Mail, PlayCircle, RefreshCcw, Rocket, Server, TerminalSquare, Wrench, Layers, Settings, BookOpen, Bug, Link2, Tag, FileText, X, ShieldCheck } from 'lucide-react';
+import { AlertCircle, Bell, CalendarClock, Clock, Folder, GitBranch, Mail, PlayCircle, RefreshCcw, Rocket, Server, TerminalSquare, Wrench, Layers, Settings, BookOpen, Bug, Link2, Tag, FileText, X, ShieldCheck, Save, Copy } from 'lucide-react';
 import { toast } from 'sonner';
 
 type RunStagesMap = Record<string, PipelineStage[]>;
@@ -62,11 +64,24 @@ const ProjectDetailPage = () => {
   const [project, setProject] = useState<Project | null>(null);
   const [pipelineRuns, setPipelineRuns] = useState<PipelineRun[]>([]);
   const [runStages, setRunStages] = useState<RunStagesMap>({});
+  const [pipelineSaving, setPipelineSaving] = useState(false);
   const [environments, setEnvironments] = useState<Environment[]>([]);
   const [scripts, setScripts] = useState<Script[]>([]);
   const [indexJobs, setIndexJobs] = useState<IndexJob[]>([]);
   const [testResults, setTestResults] = useState<TestResult[]>([]);
   const [sdlcSteps, setSdlcSteps] = useState<ProjectSdlcStep[]>([]);
+  const [collapsedPhases, setCollapsedPhases] = useState<Record<string, boolean>>({});
+  const [showSdlcDrawer, setShowSdlcDrawer] = useState(false);
+  const sdlcPromptTemplate = `You are an SDLC assistant. Keep status short. For each phase:\n- Onboarding Setup: repo/folder linked, contacts, index config.\n- Create Projects: repo-linked (no uploads) or blank project (upload folder later); deliver project record and repo/folder association.\n- Planning / Requirements: Gantt, flows, use cases, docs, minutes, notes.\n- Design: DB design, low-fi UX, system architecture diagram.\n- Development: pipelines, code health, feature checklist.\n- Testing: cases, scenarios, results, bug queue; mention reruns.\n- UAT: scripts, sign-offs, rollout plan.\n- Deployment / Maintenance: env matrix, scripts, domains, backups, monitors.\nReturn concise bullets and call out blockers or missing artifacts.`;
+  const [sdlcPrompt, setSdlcPrompt] = useState<string>(sdlcPromptTemplate);
+  const handleCopySdlcPrompt = async () => {
+    try {
+      await navigator.clipboard.writeText(sdlcPrompt);
+      toast.success('Prompt copied');
+    } catch (err) {
+      toast.error('Copy failed');
+    }
+  };
   const [indexingConfig, setIndexingConfig] = useState<ProjectIndexingConfig | null>(null);
   const [notificationSettings, setNotificationSettings] = useState<ProjectNotificationSettings | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -159,8 +174,12 @@ const ProjectDetailPage = () => {
   // Form state
   const [envName, setEnvName] = useState('Staging');
   const [envUrl, setEnvUrl] = useState('');
+  const [envDescription, setEnvDescription] = useState('');
+  const [showEnvForm, setShowEnvForm] = useState(false);
   const [scriptName, setScriptName] = useState('build.sh');
   const [scriptContent, setScriptContent] = useState('#!/usr/bin/env bash\nnpm ci\nnpm run build');
+  const [selectedScriptId, setSelectedScriptId] = useState<string | null>(null);
+  const [editMode, setEditMode] = useState(false);
   const [branch, setBranch] = useState('main');
   const [testName, setTestName] = useState('TC_smoke_001');
   const [testStatus, setTestStatus] = useState<'PASSED' | 'FAILED' | 'PENDING' | 'RUNNING'>('PASSED');
@@ -174,13 +193,25 @@ const ProjectDetailPage = () => {
   const [summaryCadenceValue, setSummaryCadenceValue] = useState<number>(1);
   const [summaryCadenceUnit, setSummaryCadenceUnit] = useState<'days' | 'weeks'>('weeks');
   const [sendInsights, setSendInsights] = useState(true);
-  const [testingView, setTestingView] = useState<'cards' | 'table'>('cards');
+  const [testingView, setTestingView] = useState<'cards' | 'table'>('table');
   const [showTemplates, setShowTemplates] = useState(true);
+  const [testSearch, setTestSearch] = useState('');
+  const [testModuleFilter, setTestModuleFilter] = useState<string>('all');
+  const [testStatusFilter, setTestStatusFilter] = useState<string>('all');
+  const branchOptions = useMemo(() => {
+    const set = new Set<string>();
+    if (project?.branch) set.add(project.branch);
+    pipelineRuns.forEach((r) => r.branch && set.add(r.branch));
+    if (branch && !set.has(branch)) set.add(branch);
+    if (set.size === 0) {
+      return ['main', 'develop'];
+    }
+    return Array.from(set);
+  }, [project?.branch, pipelineRuns, branch]);
   const tabs = useMemo(
     () => [
       { id: 'overview', label: 'Overview' },
       { id: 'sdlc', label: 'SDLC' },
-      { id: 'pipeline', label: 'Pipeline' },
       { id: 'indexing', label: 'Indexing' },
       { id: 'testing', label: 'Testing' },
       { id: 'settings', label: 'Settings' },
@@ -214,9 +245,45 @@ const ProjectDetailPage = () => {
         return 'bg-orange-100 text-orange-700 border-orange-200';
       case 'medium':
         return 'bg-amber-100 text-amber-700 border-amber-200';
-      default:
+      case 'low':
         return 'bg-emerald-100 text-emerald-700 border-emerald-200';
+      default:
+        return 'bg-muted text-muted-foreground border-border';
     }
+  };
+
+  const filteredTests = useMemo(() => {
+    const q = testSearch.trim().toLowerCase();
+    return testResults.filter((t) => {
+      const matchesSearch =
+        !q ||
+        t.test_id.toLowerCase().includes(q) ||
+        (t.scenario || '').toLowerCase().includes(q) ||
+        (t.module || '').toLowerCase().includes(q);
+      const matchesModule = testModuleFilter === 'all' || (t.module || '').toLowerCase() === testModuleFilter;
+      const matchesStatus = testStatusFilter === 'all' || t.status === testStatusFilter;
+      return matchesSearch && matchesModule && matchesStatus;
+    });
+  }, [testResults, testSearch, testModuleFilter, testStatusFilter]);
+
+  const testModuleOptions = useMemo<string[]>(() => {
+    const set = new Set<string>();
+    testResults.forEach((t) => t.module && set.add((t.module as string).toLowerCase()));
+    return Array.from(set);
+  }, [testResults]);
+
+  const addTemplateTests = () => {
+    const pid = project?.id || 'demo';
+    const templates: TestResult[] = [
+      { id: crypto.randomUUID(), project_id: pid, test_id: 'TC_Auth_001', module: 'Authentication', scenario: 'Verify login with valid credentials', status: 'PASSED', duration: '1.2s', source: 'Auto-gen', created_at: new Date().toISOString() },
+      { id: crypto.randomUUID(), project_id: pid, test_id: 'TC_Auth_002', module: 'Authentication', scenario: 'Verify login with invalid password', status: 'FAILED', duration: '0.8s', source: 'Auto-gen', created_at: new Date().toISOString() },
+      { id: crypto.randomUUID(), project_id: pid, test_id: 'TC_Auth_003', module: 'Authentication', scenario: 'Verify password reset flow', status: 'PENDING', duration: '2.1s', source: 'Auto-gen', created_at: new Date().toISOString() },
+      { id: crypto.randomUUID(), project_id: pid, test_id: 'TC_API_001', module: 'API Gateway', scenario: 'Verify GET /users endpoint', status: 'PASSED', duration: '0.3s', source: 'Auto-gen', created_at: new Date().toISOString() },
+      { id: crypto.randomUUID(), project_id: pid, test_id: 'TC_API_002', module: 'API Gateway', scenario: 'Verify POST /users endpoint validation', status: 'RUNNING', duration: '-', source: 'Auto-gen', created_at: new Date().toISOString() },
+      { id: crypto.randomUUID(), project_id: pid, test_id: 'TC_UI_001', module: 'Dashboard', scenario: 'Verify dashboard loads with user data', status: 'PENDING', duration: '3.4s', source: 'Auto-gen', created_at: new Date().toISOString() },
+      { id: crypto.randomUUID(), project_id: pid, test_id: 'TC_Payment_001', module: 'Payment', scenario: 'Verify checkout flow completion', status: 'FAILED', duration: '5.2s', source: 'Auto-gen', created_at: new Date().toISOString() },
+    ];
+    setTestResults((prev) => [...templates, ...prev]);
   };
 
   const stepKeys: SdlcStepKey[] = [
@@ -277,7 +344,7 @@ const ProjectDetailPage = () => {
         const proj = await getProject(id);
         setProject(proj);
 
-        const [runs, envs, scrs, idxJobs, tests, steps, idxCfg, notifCfg] = await Promise.all([
+        const [runs, envs, scrs, idxJobs, tests, steps, idxCfg, notifCfg, pipelineTemplate] = await Promise.all([
           listPipelineRuns(id),
           listEnvironments(id),
           listScripts(id),
@@ -285,7 +352,8 @@ const ProjectDetailPage = () => {
           listTestResults(id),
           listSdlcSteps(id),
           getIndexingConfig(id),
-          getNotificationSettings(id)
+          getNotificationSettings(id),
+          getPipelineTemplate(id)
         ]);
         setPipelineRuns(runs);
         setEnvironments(envs);
@@ -321,6 +389,9 @@ const ProjectDetailPage = () => {
           stagesMap[run.id] = await listPipelineStages(run.id);
         }
         setRunStages(stagesMap);
+        if (pipelineTemplate?.stages?.length) {
+          setPipelineOrder(pipelineTemplate.stages);
+        }
       } catch (err) {
         console.warn('Demo mode enabled. Reason:', err);
         setIsDemo(true);
@@ -424,18 +495,29 @@ const ProjectDetailPage = () => {
     if (!project) return;
     try {
       if (isDemo) {
-        const env: Environment = { id: crypto.randomUUID(), project_id: project.id, name: envName, status: 'RUNNING', url: envUrl };
+        const env: Environment = {
+          id: crypto.randomUUID(),
+          project_id: project.id,
+          name: envName,
+          status: 'RUNNING',
+          url: envUrl,
+          description: envDescription,
+        };
         setEnvironments((prev) => [...prev, env]);
       } else {
-        const env = await createEnvironment(project.id, envName, envUrl);
+        const env = await createEnvironment(project.id, envName, envUrl, envDescription);
         setEnvironments((prev) => [...prev, env]);
       }
       setEnvName('Staging');
       setEnvUrl('');
+      setEnvDescription('');
+      setShowEnvForm(false);
     } catch (err: any) {
       setError(err.message || 'Failed to create environment');
     }
   };
+
+  const [pipelineOrder, setPipelineOrder] = useState<string[]>(['Plan', 'Design', 'Code', 'Build', 'Test', 'Deploy', 'Monitor']);
 
   const handleCreateRun = async () => {
     if (!project) return;
@@ -471,6 +553,30 @@ const ProjectDetailPage = () => {
     }
   };
 
+  const handleSelectScript = (id: string) => {
+    if (!id) {
+      setSelectedScriptId(null);
+      setScriptName('build.sh');
+      setScriptContent('#!/usr/bin/env bash\nnpm ci\nnpm run build');
+      setEditMode(false);
+      return;
+    }
+    const found = scripts.find((s) => s.id === id);
+    if (found) {
+      setSelectedScriptId(found.id);
+      setScriptName(found.name);
+      setScriptContent(found.content || '');
+      setEditMode(true);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setSelectedScriptId(null);
+    setScriptName('build.sh');
+    setScriptContent('#!/usr/bin/env bash\nnpm ci\nnpm run build');
+    setEditMode(false);
+  };
+
   const handleSaveScript = async () => {
     if (!project) return;
     try {
@@ -492,12 +598,14 @@ const ProjectDetailPage = () => {
         });
       }
       setScripts((prev) => {
-        const exists = prev.find((s) => s.name === saved.name);
+        const exists = prev.find((s) => s.id === saved.id || s.name === saved.name);
         if (exists) {
-          return prev.map((s) => (s.name === saved.name ? saved : s));
+          return prev.map((s) => (s.id === saved.id || s.name === saved.name ? saved : s));
         }
         return [saved, ...prev];
       });
+      setSelectedScriptId(saved.id || null);
+      setEditMode(true);
     } catch (err: any) {
       setError(err.message || 'Failed to save script');
     }
@@ -831,6 +939,157 @@ const ProjectDetailPage = () => {
     return runStages[latest.id] || [];
   }, [pipelineRuns, runStages]);
 
+  const pipelineDisplay = useMemo(() => {
+    if (currentRunStages.length > 0) {
+      const map = new Map(currentRunStages.map((s) => [s.name, s]));
+      return pipelineOrder
+        .map((name, idx) => map.get(name) || { id: `${name}-${idx}`, name, status: 'pending', order_index: idx })
+        .map((s, idx) => ({ ...s, order_index: idx }));
+    }
+    return pipelineOrder.map((name, idx) => ({ id: `${name}-${idx}`, name, status: 'pending', order_index: idx }));
+  }, [currentRunStages, pipelineOrder]);
+
+  const onPipelineDrag = (from: number, to: number) => {
+    setPipelineOrder((prev) => {
+      const next = [...prev];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return next;
+    });
+  };
+
+  const handleSavePipelineOrder = async () => {
+    if (!project) return;
+    setPipelineSaving(true);
+    try {
+      await savePipelineTemplate(project.id, pipelineOrder);
+      toast.success('Pipeline order saved');
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to save pipeline order');
+    } finally {
+      setPipelineSaving(false);
+    }
+  };
+
+  const computedSdlcForProgress = useMemo(() => {
+    const stageToStep: Record<string, SdlcStepKey> = {
+      Plan: 'planning',
+      Design: 'design',
+      Code: 'development',
+      Build: 'development',
+      Test: 'testing',
+      Deploy: 'deployment',
+      Monitor: 'deployment',
+    };
+
+    const base = new Map<string, ProjectSdlcStep>();
+    sdlcSteps.forEach((s) => base.set(s.step_key, s));
+
+    const next: ProjectSdlcStep[] = ensureStepDefaults(sdlcSteps, project?.id);
+
+    const stageStatusRank: Record<string, number> = {
+      done: 3,
+      in_progress: 2,
+      pending: 1,
+    };
+
+    const applyStatus = (stepKey: SdlcStepKey, newStatus: ProjectSdlcStep['status']) => {
+      const idx = next.findIndex((s) => s.step_key === stepKey);
+      if (idx === -1) return;
+      const existing = next[idx].status || 'pending';
+      const rankExisting = stageStatusRank[existing] ?? 1;
+      const rankNew = stageStatusRank[newStatus] ?? 1;
+      if (rankNew >= rankExisting) {
+        next[idx] = { ...next[idx], status: newStatus };
+      }
+    };
+
+    currentRunStages.forEach((stage) => {
+      const key = stageToStep[stage.name];
+      if (!key) return;
+      if (stage.status === 'completed') applyStatus(key, 'done');
+      else if (stage.status === 'running') applyStatus(key, 'in_progress');
+      else if (stage.status === 'failed') applyStatus(key, 'in_progress');
+    });
+
+    return next;
+  }, [currentRunStages, sdlcSteps, project?.id, ensureStepDefaults]);
+
+  const togglePhaseCollapse = (id: string) => {
+    setCollapsedPhases((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const collapseAllPhases = () => {
+    setCollapsedPhases(Object.fromEntries(sdlcBlueprint.map((p) => [p.id, true])));
+  };
+
+  const expandAllPhases = () => {
+    setCollapsedPhases({});
+  };
+
+  const sdlcDrawerItems = useMemo(() => {
+    const statusMap = new Map<string, string>();
+    sdlcSteps.forEach((s) => statusMap.set(s.step_key, s.status || 'pending'));
+    return [
+      {
+        id: 'onboarding',
+        title: 'Onboarding Setup',
+        status: statusMap.get('onboarding') || 'pending',
+        summary: 'Connect repo or upload folder, set owners, enable indexing.',
+        outputs: 'Repo/folder linked · Contacts · Index config',
+      },
+      {
+        id: 'create_project',
+        title: 'Create Projects',
+        status: statusMap.get('create_project') || 'pending',
+        summary: 'Create repo-linked (no uploads) or blank project (upload folder later).',
+        outputs: 'Project record · Repo/folder association',
+      },
+      {
+        id: 'planning',
+        title: 'Planning / Requirements',
+        status: statusMap.get('planning') || 'pending',
+        summary: 'Gantt, flows, use cases, docs, minutes, notes in a planning workspace.',
+        outputs: 'Gantt · Flows · Use cases · Docs · Minutes',
+      },
+      {
+        id: 'design',
+        title: 'Design',
+        status: statusMap.get('design') || 'pending',
+        summary: 'DB design, low-fi UX, and system architecture diagrams.',
+        outputs: 'ERD · UX wireframes · System diagram',
+      },
+      {
+        id: 'development',
+        title: 'Development',
+        status: statusMap.get('development') || 'pending',
+        summary: 'Code, reviews, pipelines, feature completeness.',
+        outputs: 'Pipelines · Code health · Feature checklist',
+      },
+      {
+        id: 'testing',
+        title: 'Testing',
+        status: statusMap.get('testing') || 'pending',
+        summary: 'Test cases, scenarios, bug cards, results, reruns.',
+        outputs: 'Cases · Scenarios · Results · Bug queue',
+      },
+      {
+        id: 'uat',
+        title: 'UAT',
+        status: statusMap.get('uat') || 'pending',
+        summary: 'User acceptance, sign-offs, rollout readiness.',
+        outputs: 'UAT scripts · Sign-offs · Rollout plan',
+      },
+      {
+        id: 'deployment',
+        title: 'Deployment / Maintenance',
+        status: statusMap.get('deployment') || 'pending',
+        summary: 'Environments, scripts, domains, servers, backups, monitoring.',
+        outputs: 'Env matrix · Scripts · Domains · Backups · Monitors',
+      },
+    ];
+  }, [sdlcSteps]);
+
   if (loading) {
     return <div className="p-6 text-muted-foreground">Loading project...</div>;
   }
@@ -854,15 +1113,10 @@ const ProjectDetailPage = () => {
             <p className="text-xs uppercase tracking-wide text-muted-foreground">Project</p>
             <h1 className="text-3xl font-bold">{project.name}</h1>
             {project.description && <p className="text-muted-foreground">{project.description}</p>}
-            {isDemo && (
-              <span className="inline-flex items-center gap-1 mt-1 px-2 py-1 text-[11px] font-semibold rounded-full bg-amber-50 text-amber-800 border border-amber-200">
-                Demo mode
-              </span>
-            )}
           </div>
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => navigate('/dashboard/projects')}>Back</Button>
-            <Button onClick={handleCreateRun}><PlayCircle className="mr-2 h-4 w-4" /> Run pipeline</Button>
+            <Button className="bg-black text-white hover:bg-slate-900" onClick={handleCreateRun}><PlayCircle className="mr-2 h-4 w-4" /> Run pipeline</Button>
           </div>
         </div>
         {error && (
@@ -878,7 +1132,7 @@ const ProjectDetailPage = () => {
         next.set('tab', val);
         setSearchParams(next, { replace: true });
       }} className="space-y-6">
-        <TabsList className="sticky top-[56px] z-20 w-full grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 bg-white shadow-sm border border-border/80 rounded-2xl p-3 min-h-[64px] items-center">
+        <TabsList className="sticky top-[56px] z-20 w-full grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 bg-white shadow-sm border border-border/80 rounded-2xl p-3 min-h-[64px] items-center">
           {tabs.map(tab => (
             <TabsTrigger
               key={tab.id}
@@ -901,47 +1155,120 @@ const ProjectDetailPage = () => {
             <InfoCard title="Last deploy" value={project.last_deploy_at ? new Date(project.last_deploy_at).toLocaleString() : 'Never'} icon={<Clock size={16} />} />
           </div>
 
+          {/* SDLC progress bar (moved above pipeline/env) */}
           <div className="rounded-xl border bg-card p-4 mt-6 space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="font-semibold flex items-center gap-2"><BookOpen size={16} /> SDLC Blueprint</h3>
+                <h3 className="font-semibold flex items-center gap-2"><BookOpen size={16} /> SDLC Progress</h3>
                 <p className="text-sm text-muted-foreground">
-                  Based on `sdlc.md` — phases shown here exclude Testing & Development (managed in dedicated tabs) and focus on planning, design, deploy, and maintenance.
+                  Onboarding → Create Projects → Planning / Requirement → Design → Development → Testing → UAT → Deployment / Maintenance
                 </p>
               </div>
-              <Button variant="outline" size="sm" onClick={() => navigate('/dashboard/sdlc')}>
-                Open SDLC
-              </Button>
             </div>
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-              {sdlcBlueprint.map((phase) => (
-                <div key={phase.id} className="rounded-lg border p-4 bg-muted/40">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <div className="text-sm font-semibold">{phase.name}</div>
-                      <p className="text-xs text-muted-foreground">{phase.summary}</p>
+            <div className="flex flex-col gap-3">
+              <div className="inline-flex flex-wrap items-center gap-4 text-xs text-muted-foreground rounded-md border border-border bg-muted/40 px-3 py-2">
+                <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-emerald-500" /> Done</span>
+                <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-amber-500" /> In progress</span>
+                <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-red-500" /> Needs attention</span>
+                <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-slate-500" /> Pending</span>
+              </div>
+            <div className="flex flex-wrap gap-3 items-center">
+                {['onboarding','create_project','planning','design','development','testing','uat','deployment'].map((key, idx, arr) => {
+                  const found = computedSdlcForProgress.find((s) => s.step_key === key);
+                  const status = found?.status || 'pending';
+                  const color =
+                    status === 'done'
+                      ? 'bg-emerald-500'
+                      : status === 'in_progress'
+                        ? 'bg-amber-500'
+                        : 'bg-slate-500';
+                  const connectorColor =
+                    status === 'done'
+                      ? 'bg-emerald-500/60'
+                      : status === 'in_progress'
+                        ? 'bg-amber-500/70'
+                        : 'bg-slate-600';
+                  return (
+                    <div key={key} className="flex items-center gap-2">
+                      <span className={`w-3 h-3 rounded-full ${color}`} />
+                      <span className="text-xs font-medium capitalize whitespace-nowrap">{key.replace('_', ' ')}</span>
+                      {idx < arr.length -1 && <span className={`w-8 h-[2px] rounded-sm ${connectorColor}`} />}
                     </div>
-                    <span className="text-[11px] px-2 py-0.5 rounded-full border text-muted-foreground bg-background">{phase.status}</span>
-                  </div>
-                  <div className="mt-3 text-[11px] text-muted-foreground">{phase.outputs}</div>
-                </div>
-              ))}
+                  );
+                })}
+              </div>
             </div>
           </div>
 
+          {/* Pipeline and Environments side-by-side */}
           <div className="grid gap-4 lg:grid-cols-2 mt-6">
             <div className="rounded-xl border bg-card p-4 space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="font-semibold flex items-center gap-2"><Server size={16} /> Environments (quick)</h3>
-                  <p className="text-sm text-muted-foreground">Create and view environments without leaving overview.</p>
-                </div>
-                <div className="flex gap-2">
-                  <Input value={envName} onChange={(e) => setEnvName(e.target.value)} className="w-28" placeholder="Staging" />
-                  <Input value={envUrl} onChange={(e) => setEnvUrl(e.target.value)} className="w-40" placeholder="https://staging.example.com" />
-                  <Button size="sm" onClick={handleCreateEnv}>Add</Button>
+                  <h3 className="font-semibold flex items-center gap-2"><Wrench size={16} /> Pipeline</h3>
+                  <p className="text-sm text-muted-foreground">Plan → Design → Code → Build → Test → Deploy → Monitor (drag to reorder)</p>
                 </div>
               </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {pipelineDisplay.map((stage, idx) => (
+                  <div
+                    key={stage.id}
+                    className="rounded-lg border p-4 bg-white cursor-move shadow-sm"
+                    draggable
+                    onDragStart={(e) => { e.dataTransfer.setData('text/plain', idx.toString()); }}
+                    onDragOver={(e) => { e.preventDefault(); }}
+                    onDrop={(e) => { e.preventDefault(); const from = Number(e.dataTransfer.getData('text/plain')); onPipelineDrag(from, idx); }}
+                  >
+                    <div className="font-semibold">{stage.name}</div>
+                    <div className="text-xs text-muted-foreground capitalize">{stage.status || 'pending'}</div>
+                    <div className="text-[10px] text-muted-foreground">Order {idx + 1}</div>
+                  </div>
+                ))}
+              </div>
+              <div className="flex flex-wrap gap-2 justify-end border-t border-border pt-3">
+                <Input value={branch} onChange={(e) => setBranch(e.target.value)} className="w-32" placeholder="branch" />
+                <Button size="sm" variant="outline" onClick={handleSavePipelineOrder} disabled={pipelineSaving}>
+                  {pipelineSaving ? <RefreshCcw className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                  Save order
+                </Button>
+                <Button size="sm" className="bg-black text-white hover:bg-slate-900" onClick={handleCreateRun}><PlayCircle className="mr-2 h-4 w-4" /> Run</Button>
+              </div>
+            </div>
+
+            <div className="rounded-xl border bg-card p-4 space-y-4">
+              <div className="flex items-start justify-between">
+                <div>
+                  <h3 className="font-semibold flex items-center gap-2"><Server size={16} /> Environments</h3>
+                  <p className="text-sm text-muted-foreground">Create and view environments without leaving overview.</p>
+                </div>
+              </div>
+              {showEnvForm && (
+                <div className="rounded-lg border p-3 bg-muted/30 space-y-3">
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-sm font-medium">Name</label>
+                      <Input value={envName} onChange={(e) => setEnvName(e.target.value)} className="w-full mt-1" placeholder="Staging" />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium">URL <span className="text-muted-foreground text-[11px]">(optional)</span></label>
+                      <Input value={envUrl} onChange={(e) => setEnvUrl(e.target.value)} className="w-full mt-1" placeholder="https://staging.example.com (optional)" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">Description</label>
+                    <textarea
+                      className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm mt-1"
+                      rows={3}
+                      value={envDescription}
+                      onChange={(e) => setEnvDescription(e.target.value)}
+                      placeholder="Purpose, endpoints, credentials notes..."
+                    />
+                  </div>
+                  <div className="flex justify-end">
+                    <Button size="sm" onClick={handleCreateEnv}>Save environment</Button>
+                  </div>
+                </div>
+              )}
               <div className="grid md:grid-cols-2 gap-3">
                 {environments.map((env) => (
                   <div key={env.id} className="rounded-lg border p-3 bg-muted/30">
@@ -950,6 +1277,7 @@ const ProjectDetailPage = () => {
                       <span className="text-[11px] px-2 py-0.5 rounded-full border text-muted-foreground bg-background">{env.status}</span>
                     </div>
                     <div className="text-xs text-muted-foreground break-all">{env.url || 'No URL yet'}</div>
+                    {env.description && <div className="text-xs text-muted-foreground mt-1">{env.description}</div>}
                     {env.last_deployed_at && (
                       <div className="text-[11px] text-muted-foreground">Last deploy {new Date(env.last_deployed_at).toLocaleString()}</div>
                     )}
@@ -957,28 +1285,60 @@ const ProjectDetailPage = () => {
                 ))}
                 {environments.length === 0 && <p className="text-sm text-muted-foreground">No environments yet.</p>}
               </div>
+              <div className="flex justify-end">
+                <Button size="sm" variant="outline" onClick={() => setShowEnvForm((v) => !v)}>
+                  {showEnvForm ? 'Close' : 'Add environment'}
+                </Button>
+              </div>
+              </div>
             </div>
 
+          <div className="mt-6">
             <div className="rounded-xl border bg-card p-4 space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex items-start justify-between gap-2">
                 <div>
-                  <h3 className="font-semibold flex items-center gap-2"><Settings size={16} /> Scripts (quick)</h3>
+                  <h3 className="font-semibold flex items-center gap-2"><Settings size={16} /> Scripts</h3>
                   <p className="text-sm text-muted-foreground">Capture deploy/build scripts here; full view in Scripts tab.</p>
                 </div>
-                <div className="flex gap-2">
-                  <Input value={scriptName} onChange={(e) => setScriptName(e.target.value)} className="w-32" placeholder="deploy.sh" />
-                  <Button size="sm" onClick={handleSaveScript}>Save</Button>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <select
+                    className="h-10 rounded-md border border-input bg-background px-3 text-sm min-w-[160px]"
+                    value={selectedScriptId || ''}
+                    onChange={(e) => handleSelectScript(e.target.value)}
+                  >
+                    <option value="">New script...</option>
+                    {scripts.map((s) => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                  <Input
+                    value={scriptName}
+                    onChange={(e) => setScriptName(e.target.value)}
+                    className="w-44"
+                    placeholder="build.sh"
+                  />
+                  {editMode ? (
+                    <div className="flex gap-2">
+                      <Button size="sm" onClick={handleSaveScript}>Save</Button>
+                      <Button size="sm" variant="outline" onClick={handleCancelEdit}>Cancel</Button>
+                    </div>
+                  ) : (
+                    <Button size="sm" onClick={handleSaveScript}>Add</Button>
+                  )}
                 </div>
               </div>
-              <textarea
-                className="w-full rounded-md border border-border bg-background p-3 font-mono text-sm"
-                rows={4}
-                value={scriptContent}
-                onChange={(e) => setScriptContent(e.target.value)}
-              />
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Script content</label>
+                <textarea
+                  className="w-full rounded-md border border-border bg-background p-3 font-mono text-sm"
+                  rows={6}
+                  value={scriptContent}
+                  onChange={(e) => setScriptContent(e.target.value)}
+                />
+              </div>
               <div className="space-y-2">
                 {scripts.map((script) => (
-                  <div key={script.id} className="rounded-lg border p-3 flex items-center justify-between">
+                  <div key={script.id} className="rounded-lg border p-3 flex items-center justify-between w-full">
                     <div>
                       <div className="font-semibold flex items-center gap-2"><TerminalSquare size={14} /> {script.name}</div>
                       <div className="text-xs text-muted-foreground truncate max-w-sm">{script.content}</div>
@@ -1047,56 +1407,118 @@ const ProjectDetailPage = () => {
 
         <TabsContent value="sdlc">
           <div className="space-y-4">
-            <div className="rounded-xl border bg-card p-4 space-y-2">
+            <div className="rounded-xl border bg-card p-4 space-y-3">
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <h3 className="font-semibold flex items-center gap-2">SDLC flow (sdlc.md)</h3>
                   <p className="text-sm text-muted-foreground">Onboarding → Create Project → Planning/Requirement → Design → Development → Testing → UAT → Deployment/Maintenance.</p>
                 </div>
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm" onClick={() => goToTab('indexing')}>Index repo/folder</Button>
-                  <Button variant="outline" size="sm" onClick={() => goToTab('testing')}>Open testing</Button>
-                </div>
               </div>
               <p className="text-xs text-muted-foreground">Create Projects supports two types: repo-linked (no uploads) and blank projects (upload folder or link repo later). Indexing is required before Testing to view and rerun suites.</p>
+              <div className="flex flex-wrap gap-2">
+                  <Button variant="outline" size="sm" onClick={() => goToTab('indexing')}>Index repo/folder</Button>
+                <Button variant="outline" size="sm" onClick={() => goToTab('testing')}>Open canvas</Button>
+                <Button variant="outline" size="sm" onClick={() => setShowSdlcDrawer(true)}>Open sdlc.md</Button>
+                </div>
+              </div>
+
+            {/* Progress line inside SDLC tab */}
+            <div className="rounded-lg border bg-card p-4 space-y-3">
+              <div className="inline-flex flex-wrap items-center gap-4 text-xs text-muted-foreground rounded-md border border-border bg-muted/40 px-3 py-2">
+                <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-emerald-500" /> Done</span>
+                <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-amber-500" /> In progress</span>
+                <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-red-500" /> Needs attention</span>
+                <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-slate-500" /> Pending</span>
+              </div>
+              <div className="flex flex-wrap gap-3 items-center">
+                {['onboarding','create_project','planning','design','development','testing','uat','deployment'].map((key, idx, arr) => {
+                  const found = computedSdlcForProgress.find((s) => s.step_key === key);
+                  const status = found?.status || 'pending';
+                  const color =
+                    status === 'done'
+                      ? 'bg-emerald-500'
+                      : status === 'in_progress'
+                        ? 'bg-amber-500'
+                        : 'bg-slate-500';
+                  const connectorColor =
+                    status === 'done'
+                      ? 'bg-emerald-500/60'
+                      : status === 'in_progress'
+                        ? 'bg-amber-500/70'
+                        : 'bg-slate-600';
+                  return (
+                    <div key={key} className="flex items-center gap-2">
+                      <span className={`w-3 h-3 rounded-full ${color}`} />
+                      <span className="text-xs font-medium capitalize whitespace-nowrap">{key.replace('_', ' ')}</span>
+                      {idx < arr.length -1 && <span className={`w-8 h-[2px] rounded-sm ${connectorColor}`} />}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
 
-            <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
-              {sdlcBlueprint.map((phase) => {
-                const step = sdlcSteps.find((s) => s.step_key === phase.id);
-                const pending = step?.pending_actions || [];
-                return (
-                  <div key={phase.id} className="rounded-lg border bg-muted/20 p-4 space-y-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <p className="text-xs uppercase tracking-wide text-muted-foreground">{phase.name}</p>
-                        <p className="text-sm text-muted-foreground">{phase.summary}</p>
-                        <p className="text-[11px] text-muted-foreground/80 mt-1">{phase.outputs}</p>
+            <div className="rounded-xl border bg-card p-4 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h4 className="font-semibold flex items-center gap-2"><BookOpen size={16} /> SDLC phases</h4>
+                  <p className="text-sm text-muted-foreground">Click a phase to view pending actions.</p>
+                </div>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="ghost" onClick={collapseAllPhases}>Collapse all</Button>
+                  <Button size="sm" variant="ghost" onClick={expandAllPhases}>Expand all</Button>
+                </div>
+              </div>
+              <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
+                {sdlcBlueprint.map((phase) => {
+                  const step = sdlcSteps.find((s) => s.step_key === phase.id);
+                  const pending = step?.pending_actions || [];
+                  const isCollapsed = collapsedPhases[phase.id];
+                  return (
+                    <div key={phase.id} className="rounded-lg border bg-muted/20 p-4 space-y-3">
+                      <div className="h-px bg-border" />
+                      <div className="flex items-start justify-between gap-2">
+                        <button
+                          type="button"
+                          className="flex flex-col gap-1 text-left"
+                          onClick={() => togglePhaseCollapse(phase.id)}
+                        >
+                          <span className="text-xs uppercase tracking-wide text-muted-foreground">{phase.name}</span>
+                          <span className="text-[10px] text-muted-foreground/80">{isCollapsed ? 'Expand to view actions' : 'Collapse actions'}</span>
+                          {!isCollapsed && (
+                            <>
+                              <p className="text-sm text-muted-foreground">{phase.summary}</p>
+                              <p className="text-[11px] text-muted-foreground/80">{phase.outputs}</p>
+                            </>
+                          )}
+                        </button>
+                        <select
+                          className="h-9 rounded-md border border-input bg-background px-2 text-xs font-medium"
+                          value={step?.status || 'pending'}
+                          onChange={(e) => handleStepStatusChange(phase.id as SdlcStepKey, e.target.value as any)}
+                        >
+                          <option value="pending">Pending</option>
+                          <option value="in_progress">In progress</option>
+                          <option value="done">Done</option>
+                        </select>
                       </div>
-                      <select
-                        className="h-9 rounded-md border border-input bg-background px-2 text-xs font-medium"
-                        value={step?.status || 'pending'}
-                        onChange={(e) => handleStepStatusChange(phase.id as SdlcStepKey, e.target.value as any)}
-                      >
-                        <option value="pending">Pending</option>
-                        <option value="in_progress">In progress</option>
-                        <option value="done">Done</option>
-                      </select>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {pending.length === 0 ? (
-                        <span className="text-[11px] text-muted-foreground">No pending actions</span>
-                      ) : (
-                        pending.map((item) => (
-                          <span key={item} className="text-[11px] px-2 py-1 rounded-full border bg-white text-muted-foreground">
-                            {item}
-                          </span>
-                        ))
+                      {!isCollapsed && (
+                        <div className="flex flex-wrap gap-2">
+                          {pending.length === 0 ? (
+                            <span className="text-[11px] text-muted-foreground">No pending actions</span>
+                          ) : (
+                            pending.map((item) => (
+                              <span key={item} className="text-[11px] px-2 py-1 rounded-full border bg-white text-muted-foreground">
+                                {item}
+                              </span>
+                            ))
+                          )}
+                        </div>
                       )}
+                      <div className="h-px bg-border" />
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
 
             <div className="grid gap-4 lg:grid-cols-2">
@@ -1160,7 +1582,6 @@ const ProjectDetailPage = () => {
                     <h4 className="font-semibold flex items-center gap-2"><Wrench size={16} /> Testing readiness</h4>
                     <p className="text-sm text-muted-foreground">Indexing required before testing tab unlocks viewing/reruns.</p>
                   </div>
-                  <Button size="sm" variant="outline" onClick={() => goToTab('testing')}>Jump to testing</Button>
                 </div>
                 <div className="grid gap-2 sm:grid-cols-2">
                   {testingActionItems.map((action) => {
@@ -1186,7 +1607,6 @@ const ProjectDetailPage = () => {
                     <h4 className="font-semibold flex items-center gap-2"><Server size={16} /> Deployment / Maintenance</h4>
                     <p className="text-sm text-muted-foreground">Environment, script, domain, server, subdomain, backup, monitoring tracked as pending actions.</p>
                   </div>
-                  <Button size="sm" variant="outline" onClick={() => handleStepStatusChange('deployment', 'in_progress')}>Open deployment</Button>
                 </div>
                 <div className="grid gap-2 sm:grid-cols-2">
                   {deploymentActionItems.map((action) => {
@@ -1210,34 +1630,6 @@ const ProjectDetailPage = () => {
           </div>
         </TabsContent>
 
-        <TabsContent value="pipeline">
-          <div className="rounded-xl border bg-card p-4 space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="font-semibold">Pipeline</h3>
-                <p className="text-sm text-muted-foreground">Plan → Design → Code → Build → Test → Deploy → Monitor</p>
-              </div>
-              <div className="flex gap-2">
-                <Input value={branch} onChange={(e) => setBranch(e.target.value)} className="w-32" placeholder="branch" />
-                <Button size="sm" onClick={handleCreateRun}><PlayCircle className="mr-2 h-4 w-4" /> Run</Button>
-              </div>
-            </div>
-
-            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
-              {currentRunStages.map((stage) => (
-                <div key={stage.id} className="rounded-lg border p-4">
-                  <div className="font-semibold">{stage.name}</div>
-                  <div className="text-xs text-muted-foreground capitalize">{stage.status}</div>
-                  <div className="text-[10px] text-muted-foreground">Order {stage.order_index + 1}</div>
-                </div>
-              ))}
-              {currentRunStages.length === 0 && (
-                <p className="text-sm text-muted-foreground">No runs yet. Start one above.</p>
-              )}
-            </div>
-          </div>
-        </TabsContent>
-
         <TabsContent value="indexing">
           <div className="rounded-xl border bg-card p-4 space-y-4">
             <div className="flex items-center justify-between">
@@ -1245,9 +1637,19 @@ const ProjectDetailPage = () => {
                 <h3 className="font-semibold">Indexing</h3>
                 <p className="text-sm text-muted-foreground">Track repository or folder indexing jobs and cron-based rescans (hours + file growth).</p>
               </div>
-              <div className="flex gap-2">
-                <Input value={branch} onChange={(e) => setBranch(e.target.value)} className="w-32" />
-                <Button size="sm" onClick={handleIndex}><Layers className="mr-2 h-4 w-4" /> Run index</Button>
+              <div className="flex gap-2 items-center flex-wrap justify-end">
+                <select
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm min-w-[140px]"
+                  value={branch}
+                  onChange={(e) => setBranch(e.target.value)}
+                >
+                  {branchOptions.map((b) => (
+                    <option key={b} value={b}>{b}</option>
+                  ))}
+                </select>
+                <Button size="sm" className="bg-black text-white hover:bg-slate-900" onClick={handleIndex}>
+                  <Layers className="mr-2 h-4 w-4" /> Run index
+                </Button>
               </div>
             </div>
             <div className="grid gap-4 lg:grid-cols-2">
@@ -1267,11 +1669,14 @@ const ProjectDetailPage = () => {
                   </select>
                 </div>
                 <div className="grid gap-2">
+                  <div className="flex items-center gap-2">
                   {indexMode === 'repo' ? (
                     <Input placeholder="https://github.com/org/repo" value={sourceUrl} onChange={(e) => setSourceUrl(e.target.value)} />
                   ) : (
                     <Input placeholder="/uploads/project-folder" value={sourcePath} onChange={(e) => setSourcePath(e.target.value)} />
                   )}
+                    <Button size="sm" variant="outline" onClick={handleSaveIndexingConfig}>Save settings</Button>
+                  </div>
                 </div>
                 <div className="grid sm:grid-cols-2 gap-2">
                   <div>
@@ -1297,7 +1702,6 @@ const ProjectDetailPage = () => {
                   <div className="text-xs text-muted-foreground">
                     Last indexed: {indexingConfig?.last_indexed_at ? new Date(indexingConfig.last_indexed_at).toLocaleString() : 'Not yet'}
                   </div>
-                  <Button size="sm" variant="outline" onClick={handleSaveIndexingConfig}>Save settings</Button>
                 </div>
               </div>
               <div className="rounded-lg border p-3 space-y-2 bg-muted/20">
@@ -1306,7 +1710,7 @@ const ProjectDetailPage = () => {
                     <div className="font-semibold flex items-center gap-2"><RefreshCcw size={14} /> Automation</div>
                     <p className="text-xs text-muted-foreground">Cron scans refresh testing tables; bugs surface in Findings & marketplace submission stays enabled.</p>
                   </div>
-                  <Button size="sm" variant="outline" onClick={() => goToTab('testing')}>View tests</Button>
+                  <Button size="sm" variant="outline" className="ml-auto" onClick={() => goToTab('testing')}>View tests</Button>
                 </div>
                 <p className="text-xs text-muted-foreground">Logs and statuses recorded per job. Rescans honor file-growth threshold to skip tiny changes.</p>
                 {indexingConfig?.notes && <p className="text-xs text-muted-foreground">Notes: {indexingConfig.notes}</p>}
@@ -1326,12 +1730,59 @@ const ProjectDetailPage = () => {
               ))}
               {indexJobs.length === 0 && <p className="text-sm text-muted-foreground">No index jobs yet.</p>}
             </div>
+
+            <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+              <div className="font-semibold text-sm">Indexed codebases</div>
+              {indexJobs.filter(j => j.status === 'completed').length === 0 ? (
+                <p className="text-xs text-muted-foreground">No completed index jobs yet.</p>
+              ) : (
+                <div className="grid sm:grid-cols-2 gap-2">
+                  {indexJobs.filter(j => j.status === 'completed').map((job) => (
+                    <div key={job.id} className="rounded-md border border-border bg-background p-2 text-xs space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold">Branch: {job.branch}</span>
+                        <span className="text-[10px] uppercase text-emerald-700">Completed</span>
+                      </div>
+                      {job.created_at && (
+                        <div className="text-muted-foreground">Indexed at {new Date(job.created_at).toLocaleString()}</div>
+                      )}
+                      {project?.repository_url && (
+                        <a className="inline-flex items-center gap-1 text-primary hover:underline" href={project.repository_url} target="_blank" rel="noreferrer">
+                          <Link2 size={12} /> Repo
+                        </a>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {isDemo && (
+              <div className="rounded-lg border bg-muted/20 p-3 space-y-2">
+                <div className="font-semibold text-sm">Demo codebases</div>
+                <div className="grid sm:grid-cols-2 gap-2">
+                  {[
+                    { name: 'opsnest/frontend', branch: 'main', status: 'Completed', lastIndexed: 'Today 10:15' },
+                    { name: 'opsnest/backend', branch: 'develop', status: 'Completed', lastIndexed: 'Today 09:42' },
+                  ].map((demo) => (
+                    <div key={demo.name} className="rounded-md border border-border bg-background p-2 text-xs space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold">{demo.name}</span>
+                        <span className="text-[10px] uppercase text-emerald-700">{demo.status}</span>
+                      </div>
+                      <div className="text-muted-foreground">Branch: {demo.branch}</div>
+                      <div className="text-muted-foreground">Indexed at {demo.lastIndexed}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </TabsContent>
 
         <TabsContent value="testing">
           <div className="rounded-xl border bg-card p-4 space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center gap-2 justify-between">
               <div>
                 <h3 className="font-semibold">Testing</h3>
                 <p className="text-sm text-muted-foreground">Unit, integration, and E2E results.</p>
@@ -1350,22 +1801,6 @@ const ProjectDetailPage = () => {
                 </select>
                 <Button size="sm" onClick={handleAddTestResult}><Wrench className="mr-2 h-4 w-4" /> Add</Button>
                 <Button size="sm" variant="outline" onClick={handleRerunSuite}><RefreshCcw className="mr-2 h-4 w-4" /> Rerun suite</Button>
-                <div className="flex items-center gap-1 border rounded-md p-1 bg-muted/50">
-                  <Button
-                    size="sm"
-                    variant={testingView === 'cards' ? 'default' : 'ghost'}
-                    onClick={() => setTestingView('cards')}
-                  >
-                    Cards
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant={testingView === 'table' ? 'default' : 'ghost'}
-                    onClick={() => setTestingView('table')}
-                  >
-                    Table
-                  </Button>
-                </div>
               </div>
             </div>
             <div className="rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground flex items-center gap-2">
@@ -1373,35 +1808,55 @@ const ProjectDetailPage = () => {
               <Button variant="ghost" size="sm" className="ml-auto" onClick={() => goToTab('indexing')}>Go to indexing</Button>
             </div>
 
-            {testingView === 'cards' && (
-              <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-                {[
-                  { title: 'Test cases table', desc: 'Structured cases for coverage tracking' },
-                  { title: 'AI scenarios', desc: 'Scenario generation against indexed code' },
-                  { title: 'Bug cards', desc: 'Surface failures with repro + links' },
-                  { title: 'Playwright results', desc: 'Latest playwright runs & rerun hooks' },
-                  { title: 'UAT & testcases', desc: 'Acceptance scripts and sign-offs' },
-                  { title: 'Rerun tests', desc: 'Trigger suite rerun directly from dashboard' },
-                ].map((item) => (
-                  <div key={item.title} className="rounded-lg border p-3 bg-white/60">
-                    <div className="font-semibold text-sm">{item.title}</div>
-                    <div className="text-xs text-muted-foreground">{item.desc}</div>
-                  </div>
-                ))}
+            <div className="flex flex-wrap gap-2 items-center justify-between">
+              <div className="flex flex-wrap gap-2 items-center">
+                <Input
+                  value={testSearch}
+                  onChange={(e) => setTestSearch(e.target.value)}
+                  className="w-56"
+                  placeholder="Search test cases..."
+                />
+                <select
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                  value={testModuleFilter}
+                  onChange={(e) => setTestModuleFilter(e.target.value)}
+                >
+                  <option value="all">All modules</option>
+                  {testModuleOptions.map((m) => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
+                <select
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                  value={testStatusFilter}
+                  onChange={(e) => setTestStatusFilter(e.target.value)}
+                >
+                  <option value="all">All status</option>
+                  <option value="PASSED">Passed</option>
+                  <option value="FAILED">Failed</option>
+                  <option value="RUNNING">Running</option>
+                  <option value="PENDING">Pending</option>
+                  <option value="PENDING REVIEW">Pending review</option>
+                </select>
               </div>
-            )}
+              <div className="flex items-center gap-2">
+                <Button size="sm" variant="outline" onClick={addTemplateTests}>Add default templates</Button>
+                <Button size="sm" className="bg-black text-white hover:bg-slate-900">Run all tests</Button>
+              </div>
+            </div>
 
             <div className="rounded-xl border bg-card">
-              <button
-                className="w-full flex items-center justify-between px-4 py-3 text-left"
-                onClick={() => setShowTemplates((v) => !v)}
-              >
+              <div className="w-full flex items-center justify-between px-4 py-3">
                 <div>
                   <h4 className="font-semibold">Default templates</h4>
                   <p className="text-sm text-muted-foreground">Reusable checks for images, dark mode, translation, mobile responsive.</p>
                 </div>
-                <span className="text-xs text-muted-foreground">{showTemplates ? 'Hide' : 'Show'}</span>
-              </button>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="ghost" onClick={() => setShowTemplates((v) => !v)}>
+                    {showTemplates ? 'Hide' : 'Show'}
+                  </Button>
+                </div>
+              </div>
               {showTemplates && (
                 <div className="border-t p-4 space-y-3">
                   <div className="flex items-center justify-between">
@@ -1430,7 +1885,6 @@ const ProjectDetailPage = () => {
               )}
             </div>
 
-            {testingView === 'table' ? (
               <div className="rounded-xl border overflow-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
@@ -1445,20 +1899,20 @@ const ProjectDetailPage = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {testResults.map((tr) => (
+                  {filteredTests.map((tr) => (
                       <tr key={tr.id} className="border-t [&>td]:px-3 [&>td]:py-2">
-                        <td className="font-semibold">{tr.test_id}</td>
+                      <td className="font-semibold text-primary">{tr.test_id}</td>
                         <td className="text-xs text-muted-foreground">{tr.module || '—'}</td>
                         <td className="text-xs text-muted-foreground">{tr.scenario || '—'}</td>
                         <td className="text-xs font-semibold uppercase">{tr.status}</td>
-                        <td className="text-xs text-muted-foreground">{tr.duration || '—'}</td>
+                      <td className="text-xs text-muted-foreground">{(tr as any).duration || '—'}</td>
                         <td className="text-xs text-muted-foreground">
-                          {tr.last_run_at ? new Date(tr.last_run_at).toLocaleString() : '—'}
+                        {(tr as any).last_run_at ? new Date((tr as any).last_run_at).toLocaleString() : '—'}
                         </td>
-                        <td className="text-xs text-muted-foreground">{tr.source || '—'}</td>
+                      <td className="text-xs text-muted-foreground">{(tr as any).source || 'Auto-gen'}</td>
                       </tr>
                     ))}
-                    {testResults.length === 0 && (
+                  {filteredTests.length === 0 && (
                       <tr>
                         <td colSpan={7} className="text-center text-sm text-muted-foreground py-6">
                           No test results yet.
@@ -1468,20 +1922,6 @@ const ProjectDetailPage = () => {
                   </tbody>
                 </table>
               </div>
-            ) : (
-              <div className="space-y-2">
-                {testResults.map((tr) => (
-                  <div key={tr.id} className="rounded-lg border p-3 flex items-center justify-between">
-                    <div>
-                      <div className="font-semibold">{tr.test_id}</div>
-                      <div className="text-xs text-muted-foreground">{tr.scenario || 'No scenario'}</div>
-                    </div>
-                    <div className="text-xs uppercase font-semibold">{tr.status}</div>
-                  </div>
-                ))}
-                {testResults.length === 0 && <p className="text-sm text-muted-foreground">No test results yet.</p>}
-              </div>
-            )}
           </div>
         </TabsContent>
 
@@ -1518,8 +1958,9 @@ const ProjectDetailPage = () => {
               <div className="text-xs text-muted-foreground">
                 Last indexed: {indexingConfig?.last_indexed_at ? new Date(indexingConfig.last_indexed_at).toLocaleString() : 'Not yet'}
               </div>
-              <div className="flex items-center justify-end">
-                <Button size="sm" onClick={handleSaveIndexingConfig}>Save cron settings</Button>
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
+              <Button size="sm" variant="outline" onClick={() => goToTab('indexing')}>Back to indexing</Button>
+              <Button size="sm" className="bg-black text-white hover:bg-slate-900" onClick={handleSaveIndexingConfig}>Save cron settings</Button>
               </div>
             </div>
           </div>
@@ -1678,6 +2119,53 @@ const ProjectDetailPage = () => {
                 <Button type="submit">Submit</Button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {showSdlcDrawer && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-stretch justify-end" style={{ marginTop: 0 }}>
+          <div className="bg-white dark:bg-slate-900 w-full max-w-xl h-full overflow-y-auto shadow-2xl p-6 border-l border-border relative animate-in slide-in-from-right duration-200">
+            <button className="absolute right-4 top-4 text-muted-foreground hover:text-foreground" onClick={() => setShowSdlcDrawer(false)}>
+              <X size={18} />
+            </button>
+            <div className="flex items-center gap-2 mb-4">
+              <BookOpen size={18} />
+              <div>
+                <h2 className="text-lg font-semibold">sdlc.md (summary)</h2>
+                <p className="text-xs text-muted-foreground">Condensed phases pulled from the SDLC guide.</p>
+              </div>
+            </div>
+            <div className="space-y-3">
+              {sdlcDrawerItems.map((item) => (
+                <div key={item.id} className="rounded-lg border p-3 bg-muted/30 space-y-1">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-semibold">{item.title}</p>
+                      <p className="text-xs text-muted-foreground">{item.summary}</p>
+                    </div>
+                    <span className="text-[11px] px-2 py-0.5 rounded-full border text-muted-foreground bg-background capitalize">
+                      {item.status}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">{item.outputs}</p>
+                </div>
+              ))}
+              <div className="border-t border-border pt-4 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs font-semibold text-muted-foreground">AI prompt starter (editable)</p>
+                  <Button size="sm" variant="ghost" className="h-8 px-2" onClick={handleCopySdlcPrompt}>
+                    <Copy size={14} className="mr-1" />
+                    Copy
+                  </Button>
+                </div>
+                <textarea
+                  className="w-full min-h-[180px] rounded-md border border-border bg-muted/30 p-3 text-sm leading-relaxed"
+                  value={sdlcPrompt}
+                  onChange={(e) => setSdlcPrompt(e.target.value)}
+                />
+              </div>
+            </div>
           </div>
         </div>
       )}

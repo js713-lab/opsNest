@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import LandingPage from './pages/LandingPage';
 import LoginPage from './pages/auth/LoginPage';
@@ -20,6 +20,50 @@ import ProfilePage from './pages/dashboard/ProfilePage';
 import MessagesPage from './pages/dashboard/MessagesPage';
 import RepositoriesPage from './pages/dashboard/RepositoriesPage';
 import { Toaster } from 'sonner';
+import { supabase } from './lib/supabase';
+import type { Session } from '@supabase/supabase-js';
+
+const RequireAuth = ({ children }: { children: React.ReactNode }) => {
+  const [session, setSession] = useState<Session | null>(null);
+  const [isChecking, setIsChecking] = useState(true);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (!isMounted) return;
+      setSession(data.session);
+      setIsChecking(false);
+    });
+
+    const { data: { subscription } = { subscription: null } } = supabase.auth.onAuthStateChange(
+      (_event, newSession) => {
+        if (!isMounted) return;
+        setSession(newSession);
+        setIsChecking(false);
+      }
+    );
+
+    return () => {
+      isMounted = false;
+      subscription?.unsubscribe();
+    };
+  }, []);
+
+  if (isChecking) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <p className="text-sm text-slate-500">Checking session...</p>
+      </div>
+    );
+  }
+
+  if (!session) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return <>{children}</>;
+};
 
 function App() {
   return (
@@ -33,7 +77,14 @@ function App() {
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/oauth/github/callback" element={<GitHubCallbackPage />} />
         
-        <Route path="/dashboard" element={<DashboardLayout />}>
+        <Route
+          path="/dashboard"
+          element={
+            <RequireAuth>
+              <DashboardLayout />
+            </RequireAuth>
+          }
+        >
           <Route index element={<DashboardHome />} />
           <Route path="projects" element={<ProjectsPage />} />
           <Route path="projects/:id" element={<ProjectDetailPage />} />

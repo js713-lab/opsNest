@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { Bookmark, LogOut, Search, Tag, X, GitBranch, Link2, Clock3, CheckCircle2, MessageCircle, Inbox, ClipboardList, ShieldAlert, Eye } from 'lucide-react';
+import { Bookmark, LogOut, Search, Tag, X, GitBranch, Link2, Clock3, CheckCircle2, MessageCircle, Inbox, ClipboardList, ShieldAlert, Eye, Loader2 } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
 
 type ListingStatus = 'open' | 'assigned' | 'fixed';
@@ -117,7 +117,7 @@ const ListingActions = ({ listing, onOpen, orientation = 'row', className }: Lis
 
   return (
     <div className={combinedContainer}>
-      <Button size="sm" variant="outline" className={buttonWidth} onClick={(e) => e.stopPropagation()}>
+      <Button size="sm" variant="outline" className={`${buttonWidth} bg-black text-white hover:bg-slate-800 hover:text-white border-black`} onClick={(e) => e.stopPropagation()}>
         Fix it
       </Button>
       <Button
@@ -149,14 +149,12 @@ const ListingActions = ({ listing, onOpen, orientation = 'row', className }: Lis
       </Button>
       <Button
         size="sm"
-        variant="ghost"
-        className={`${buttonWidth} text-muted-foreground hover:text-foreground`}
+        variant="outline"
+        className={`${buttonWidth} flex items-center justify-center gap-1.5 border-dashed`}
         onClick={(e) => e.stopPropagation()}
       >
-        <span className="flex w-full items-center justify-center gap-1.5 whitespace-nowrap">
-          <Bookmark size={14} />
-          Bookmark
-        </span>
+        <Bookmark size={14} />
+        Bookmark
       </Button>
     </div>
   );
@@ -170,8 +168,15 @@ const MarketplacePage = () => {
   const [selectedListing, setSelectedListing] = useState<Listing | null>(null);
   const [activeTab, setActiveTab] = useState<'browse' | 'my' | 'messages'>('browse');
   const [filterPanelOpen, setFilterPanelOpen] = useState(false);
-  const [viewMode, setViewMode] = useState<'grid' | 'compact'>('grid');
   const [searchParams, setSearchParams] = useSearchParams();
+  const [loading, setLoading] = useState(false);
+
+  const handleRefresh = () => {
+    setLoading(true);
+    setTimeout(() => {
+      window.location.reload();
+    }, 500);
+  };
 
   const myListings: Listing[] = listingsSeed.slice(0, 2);
   const messages = [
@@ -254,17 +259,9 @@ const MarketplacePage = () => {
             <h1 className="text-2xl font-bold">Bugs, runs, and scan findings</h1>
           </div>
           <div className="flex gap-2">
-            <Button
-              variant={viewMode === 'grid' ? 'default' : 'outline'}
-              onClick={() => setViewMode('grid')}
-            >
-              Grid view
-            </Button>
-            <Button
-              variant={viewMode === 'compact' ? 'default' : 'outline'}
-              onClick={() => setViewMode('compact')}
-            >
-              Compact list
+            <Button variant="outline" onClick={handleRefresh} disabled={loading}>
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              <span className={loading ? 'ml-2' : ''}>Refresh</span>
             </Button>
           </div>
         </div>
@@ -283,11 +280,11 @@ const MarketplacePage = () => {
               />
             </div>
             <div className="flex flex-wrap items-center gap-3">
-              <Button size="sm" variant="ghost" onClick={() => setFilterPanelOpen((v) => !v)}>
-                {filterPanelOpen ? 'Hide filters' : 'Show filters'}
-              </Button>
               <Button size="sm" variant="outline" onClick={resetFilters}>
                 Reset filters
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setFilterPanelOpen((v) => !v)}>
+                {filterPanelOpen ? 'Hide filters' : 'Show filters'}
               </Button>
             </div>
           </div>
@@ -402,83 +399,40 @@ const MarketplacePage = () => {
               ))}
             </div>
 
-            {viewMode === 'grid' ? (
-              <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
-                {filteredListings.map((listing) => (
-                  <div key={listing.id} className="rounded-xl border bg-card p-4 shadow-sm hover:shadow-md transition cursor-pointer" onClick={() => openListing(listing)}>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <GitBranch size={14} /> {listing.branch}
-                      </div>
-                      <span className={`${badgeBase} ${badgeBySeverity[listing.severity]}`}>
-                        {listing.severity}
+            <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
+              {filteredListings.map((listing) => (
+                <div key={listing.id} className="rounded-xl border bg-card p-4 shadow-sm hover:shadow-md transition cursor-pointer" onClick={() => openListing(listing)}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <GitBranch size={14} /> {listing.branch}
+                    </div>
+                    <span className={`${badgeBase} ${badgeBySeverity[listing.severity]}`}>
+                      {listing.severity}
+                    </span>
+                  </div>
+                  <h3 className="mt-2 text-lg font-semibold leading-tight">{listing.title}</h3>
+                  <p className="text-sm text-muted-foreground">{listing.repo}</p>
+                  <p className="text-sm text-muted-foreground mt-2 line-clamp-3">{listing.summary}</p>
+                  <div className="flex flex-wrap gap-2 mt-3">
+                    {listing.tags.map((tag) => (
+                      <span key={tag} className="text-[11px] px-2 py-1 rounded-full border bg-muted text-muted-foreground flex items-center gap-1">
+                        <Tag size={12} /> {tag}
                       </span>
-                    </div>
-                    <h3 className="mt-2 text-lg font-semibold leading-tight">{listing.title}</h3>
-                    <p className="text-sm text-muted-foreground">{listing.repo}</p>
-                    <p className="text-sm text-muted-foreground mt-2 line-clamp-3">{listing.summary}</p>
-                    <div className="flex flex-wrap gap-2 mt-3">
-                      {listing.tags.map((tag) => (
-                        <span key={tag} className="text-[11px] px-2 py-1 rounded-full border bg-muted text-muted-foreground flex items-center gap-1">
-                          <Tag size={12} /> {tag}
-                        </span>
-                      ))}
-                    </div>
-                    <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
-                      <span className={`${badgeBase} capitalize ${badgeByStatus[listing.status]}`}>{listing.status}</span>
-                      <span className="flex items-center gap-1"><Clock3 size={12} /> {listing.createdAt}</span>
-                    </div>
-                    <ListingActions listing={listing} onOpen={openListing} className="mt-4" />
+                    ))}
                   </div>
-                ))}
-                {filteredListings.length === 0 && (
-                  <div className="col-span-full rounded-xl border border-dashed p-6 text-center text-muted-foreground">
-                    No listings match your filters yet.
+                  <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
+                    <span className={`${badgeBase} capitalize ${badgeByStatus[listing.status]}`}>{listing.status}</span>
+                    <span className="flex items-center gap-1"><Clock3 size={12} /> {listing.createdAt}</span>
                   </div>
-                )}
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {filteredListings.map((listing) => (
-                  <div
-                    key={listing.id}
-                    className="rounded-xl border bg-card p-3 shadow-sm hover:shadow-md transition cursor-pointer flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
-                    onClick={() => openListing(listing)}
-                  >
-                    <div className="flex-1 space-y-1">
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <GitBranch size={14} /> {listing.repo} <span className="text-muted-foreground/70">·</span> {listing.branch}
-                        <span className="px-2 py-1 rounded-full border capitalize text-[11px] ml-auto sm:ml-2">{listing.category}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <h3 className="text-base font-semibold leading-tight">{listing.title}</h3>
-                        <span className={`${badgeBase} ${badgeBySeverity[listing.severity]}`}>
-                          {listing.severity}
-                        </span>
-                        <span className={`${badgeBase} capitalize ${badgeByStatus[listing.status]}`}>
-                          {listing.status}
-                        </span>
-                        <span className="flex items-center gap-1 text-xs text-muted-foreground"><Clock3 size={12} /> {listing.createdAt}</span>
-                      </div>
-                      <p className="text-sm text-muted-foreground line-clamp-2">{listing.summary}</p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {listing.tags.map((tag) => (
-                          <span key={tag} className="text-[11px] px-2 py-1 rounded-full border bg-muted text-muted-foreground flex items-center gap-1">
-                            <Tag size={11} /> {tag}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                    <ListingActions listing={listing} onOpen={openListing} orientation="column" />
-                  </div>
-                ))}
-                {filteredListings.length === 0 && (
-                  <div className="rounded-xl border border-dashed p-6 text-center text-muted-foreground">
-                    No listings match your filters yet.
-                  </div>
-                )}
-              </div>
-            )}
+                  <ListingActions listing={listing} onOpen={openListing} className="mt-4" />
+                </div>
+              ))}
+              {filteredListings.length === 0 && (
+                <div className="col-span-full rounded-xl border border-dashed p-6 text-center text-muted-foreground">
+                  No listings match your filters yet.
+                </div>
+              )}
+            </div>
           </>
         )}
 
