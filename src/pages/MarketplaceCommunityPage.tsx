@@ -5,6 +5,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import GridScan from '@/components/ui/GridScan';
 import type { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
+import { isDemoMode } from '@/lib/demo';
 
 type Severity = 'critical' | 'high' | 'medium' | 'low';
 
@@ -80,6 +81,7 @@ const severityChip: Record<Severity, string> = {
 };
 
 const MarketplaceCommunityPage = () => {
+  const forceDemoMode = isDemoMode();
   const [search, setSearch] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [user, setUser] = useState<User | null>(null);
@@ -93,7 +95,8 @@ const MarketplaceCommunityPage = () => {
   const [isDark, setIsDark] = useState<boolean>(() => window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
   const [showBackTop, setShowBackTop] = useState(false);
 
-  const tags = useMemo(() => Array.from(new Set(seed.flatMap((s) => s.tags))), []);
+  const listings = useMemo(() => (forceDemoMode ? seed : []), [forceDemoMode]);
+  const tags = useMemo(() => Array.from(new Set(listings.flatMap((s) => s.tags))), [listings]);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => setUser(user));
@@ -157,7 +160,7 @@ const MarketplaceCommunityPage = () => {
   };
 
   const filtered = useMemo(() => {
-    return seed.filter((item) => {
+    return listings.filter((item) => {
       const matchSearch =
         item.title.toLowerCase().includes(search.toLowerCase()) ||
         item.repo.toLowerCase().includes(search.toLowerCase()) ||
@@ -166,7 +169,9 @@ const MarketplaceCommunityPage = () => {
         selectedTags.length === 0 || selectedTags.every((t) => item.tags.includes(t));
       return matchSearch && matchTags;
     });
-  }, [search, selectedTags]);
+  }, [search, selectedTags, listings]);
+
+  const hasListings = listings.length > 0;
 
   const toggleTag = (tag: string) => {
     setSelectedTags((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]));
@@ -433,7 +438,17 @@ const MarketplaceCommunityPage = () => {
                </Button>
              </div>
 
-             {filtered.length === 0 ? (
+             {!hasListings ? (
+               <div className="text-center py-20">
+                 <div className="h-16 w-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-400">
+                   <Search size={24} />
+                 </div>
+                 <h3 className="text-lg font-semibold text-slate-900">No marketplace listings</h3>
+                 <p className="text-slate-500 max-w-sm mx-auto mt-2">
+                   Connect your backend/Supabase to load listings. Demo listings only appear when demo mode is enabled.
+                 </p>
+               </div>
+             ) : filtered.length === 0 ? (
                <div className="text-center py-20">
                  <div className="h-16 w-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-400">
                    <Search size={24} />
@@ -518,10 +533,10 @@ const MarketplaceCommunityPage = () => {
                   Message the team
                 </Button>
                 <a
-                  href="mailto:community@opsnest.dev"
+                  href="mailto:hong@codecrafter.dev"
                   className="text-indigo-700 font-semibold hover:underline text-sm"
                 >
-                  community@opsnest.dev
+                  hong@codecrafter.dev
                 </a>
               </div>
             </div>

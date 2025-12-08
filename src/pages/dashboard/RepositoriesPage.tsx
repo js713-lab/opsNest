@@ -2,11 +2,12 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { fetchGithubRepos, getGithubToken, GithubRepo } from '@/lib/github';
-import { supabase, listProjects, Project, listIndexJobs, IndexJob } from '@/lib/supabase';
+import { listProjects, Project, listIndexJobs, IndexJob } from '@/lib/supabase';
+import { isDemoMode } from '@/lib/demo';
 import { Loader2, RefreshCw, ExternalLink, Search, CheckCircle2, Loader, Clock } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
-type TokenSource = 'local' | 'supabase' | null;
+type TokenSource = 'local' | 'demo' | null;
 type RepoStatus = 'linked' | 'indexing' | 'not_linked';
 
 interface EnhancedRepo extends GithubRepo {
@@ -15,35 +16,63 @@ interface EnhancedRepo extends GithubRepo {
 }
 
 const RepositoriesPage = () => {
+  const [demoMode, setDemoModeState] = useState<boolean>(isDemoMode());
+  const demoRepos: EnhancedRepo[] = [
+    {
+      id: 1,
+      name: 'workspace-api',
+      full_name: 'your-org/workspace-api',
+      default_branch: 'main',
+      html_url: 'https://github.com/your-org/workspace-api',
+      owner: { login: 'your-org' },
+    },
+    {
+      id: 2,
+      name: 'customer-portal',
+      full_name: 'your-org/customer-portal',
+      default_branch: 'main',
+      html_url: 'https://github.com/your-org/customer-portal',
+      owner: { login: 'your-org' },
+    },
+    {
+      id: 3,
+      name: 'ops-automation',
+      full_name: 'your-org/ops-automation',
+      default_branch: 'main',
+      html_url: 'https://github.com/your-org/ops-automation',
+      owner: { login: 'your-org' },
+    },
+    {
+      id: 4,
+      name: 'data-pipeline',
+      full_name: 'your-org/data-pipeline',
+      default_branch: 'main',
+      html_url: 'https://github.com/your-org/data-pipeline',
+      owner: { login: 'your-org' },
+    },
+  ].map((r) => ({ ...r, project: undefined, latestIndexJob: undefined }));
   const [repos, setRepos] = useState<EnhancedRepo[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState<string>('');
   const [tokenSource, setTokenSource] = useState<TokenSource>(null);
 
-  const loadRepos = async () => {
+  const loadRepos = async (forceDemo?: boolean) => {
     setLoading(true);
     setError(null);
+    const useDemo = forceDemo ?? demoMode;
     try {
-      let token = getGithubToken();
-      let source: TokenSource = token ? 'local' : null;
-
-      // Fallback to Supabase-stored token if localStorage is empty.
-      if (!token) {
-        const { data } = await supabase
-          .from('integrations_config')
-          .select('config')
-          .eq('provider', 'github')
-          .limit(1);
-        const configToken = data?.[0]?.config?.token as string | undefined;
-        if (configToken) {
-          token = configToken;
-          source = 'supabase';
-        }
+      if (useDemo) {
+        setRepos(demoRepos);
+        setTokenSource('demo');
+        return;
       }
 
+      const token = getGithubToken();
+      const source: TokenSource = token ? 'local' : null;
+
       if (!token) {
-        setError('Connect GitHub in Integrations first, then retry.');
+        setError('Connect your GitHub account (per-user) in Integrations, then retry.');
         setRepos([]);
         setTokenSource(null);
         return;
@@ -83,7 +112,7 @@ const RepositoriesPage = () => {
   useEffect(() => {
     loadRepos();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [demoMode]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -117,7 +146,7 @@ const RepositoriesPage = () => {
             {tokenSource && (
               <span className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded-full border bg-muted text-muted-foreground">
                 <span className="w-2 h-2 rounded-full bg-green-500" />
-                Token: {tokenSource === 'local' ? 'Local storage' : 'Supabase'}
+                Token: {tokenSource === 'demo' ? 'Demo' : 'Local storage'}
               </span>
             )}
           </div>
@@ -126,7 +155,19 @@ const RepositoriesPage = () => {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={loadRepos} disabled={loading}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              const next = !demoMode;
+              localStorage.setItem('opsnest_demo_mode', next ? 'true' : 'false');
+              setDemoModeState(next);
+              loadRepos(next);
+            }}
+          >
+            {demoMode ? 'Exit demo' : 'Use demo data'}
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => loadRepos()} disabled={loading}>
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
             <span className="ml-2">Refresh</span>
           </Button>
@@ -160,7 +201,25 @@ const RepositoriesPage = () => {
         </div>
       )}
 
-      {!error && !loading && filtered.length === 0 && (
+      {!error && !loading && repos.length === 0 && (
+        <div className="border border-dashed border-border rounded-lg p-8 text-center space-y-3">
+          <p className="text-lg font-semibold text-foreground">No repositories yet</p>
+          <p className="text-sm text-muted-foreground max-w-lg mx-auto">
+            Connect your GitHub account in Integrations to list your repos, then come back to link and index them.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-2 justify-center">
+            <Link to="/dashboard/integrations">
+              <Button className="w-full sm:w-auto bg-black text-white hover:bg-black/85">Go to Integrations</Button>
+            </Link>
+            <Button variant="outline" className="w-full sm:w-auto" onClick={() => loadRepos()} disabled={loading}>
+              {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Refresh
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {!error && !loading && repos.length > 0 && filtered.length === 0 && (
         <div className="border border-dashed border-border rounded-lg p-8 text-center text-sm text-muted-foreground">
           No repositories match your search.
         </div>

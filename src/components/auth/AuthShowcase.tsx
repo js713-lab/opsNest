@@ -30,14 +30,14 @@ const AuthShowcase = () => {
             >
               <div className="flex items-center justify-between text-sm text-white/80">
                 <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1">
-                  Smooth
+                  Workflow
                 </span>
-                <span className="text-white/60">Customizable</span>
+                <span className="text-white/60">SDLC view</span>
               </div>
               <div className="space-y-4">
                 <div className="text-7xl font-black text-white/90 drop-shadow-lg">3</div>
                 <p className="text-white/80 text-lg leading-relaxed">
-                  Card stacks have never looked so good. Just look at it go!
+                  Orchestrate Plan → Deploy with AI copilots, approvals, and live status.
                 </p>
               </div>
               <div className="text-xs uppercase tracking-[0.2em] text-white/60">Live environments</div>
@@ -49,14 +49,14 @@ const AuthShowcase = () => {
             >
               <div className="flex items-center justify-between text-sm text-white/80">
                 <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1">
-                  Elastic
+                  Security
                 </span>
-                <span className="text-white/60">GSAP powered</span>
+                <span className="text-white/60">Guardrails</span>
               </div>
               <div className="space-y-4">
                 <div className="text-7xl font-black text-white/90 drop-shadow-lg">2</div>
                 <p className="text-white/80 text-lg leading-relaxed">
-                  Delightful motion that swaps, drops, and returns with physics-like timing.
+                  SSO-ready, least-privilege repo access, and audit trails for every run.
                 </p>
               </div>
               <div className="text-xs uppercase tracking-[0.2em] text-white/60">Responsive ready</div>
@@ -68,14 +68,14 @@ const AuthShowcase = () => {
             >
               <div className="flex items-center justify-between text-sm text-white/80">
                 <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1">
-                  Stacked
+                  Automation
                 </span>
-                <span className="text-white/60">Depth &amp; skew</span>
+                <span className="text-white/60">Pipelines</span>
               </div>
               <div className="space-y-4">
                 <div className="text-7xl font-black text-white/90 drop-shadow-lg">1</div>
                 <p className="text-white/80 text-lg leading-relaxed">
-                  Communicate confidence with layered cards, crisp borders, and subtle skew.
+                  Ship with reusable CI/CD scripts, health checks, and rollback steps baked in.
                 </p>
               </div>
               <div className="text-xs uppercase tracking-[0.2em] text-white/60">Ops ready</div>
@@ -85,7 +85,7 @@ const AuthShowcase = () => {
 
         <div className="absolute inset-x-0 -bottom-20 flex justify-center pointer-events-none z-30">
           <div className="grid w-full max-w-[520px] grid-cols-2 gap-3 text-xs font-semibold tracking-[0.2em] text-slate-100/90">
-            {['Live previews', 'Polished mono', 'Hover pause', 'Built with gsap'].map((text) => (
+            {['AI copilots', 'Repo guardrails', 'Pipelines ready', 'Mobile friendly'].map((text) => (
               <div
                 key={text}
                 className="w-full rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-center"

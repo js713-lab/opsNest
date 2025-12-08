@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Bookmark, Clock3, GitBranch, Inbox, Link2, MessageCircle, SendHorizonal, Sparkles, Tag } from 'lucide-react';
+import { isDemoMode } from '@/lib/demo';
 
 type Severity = 'critical' | 'high' | 'medium' | 'low';
 type Status = 'open' | 'assigned' | 'fixed';
@@ -91,8 +92,10 @@ const seedThreads: Conversation[] = [
 ];
 
 const MessagesPage = () => {
-  const [threads, setThreads] = useState<Conversation[]>(seedThreads);
-  const [selectedId, setSelectedId] = useState<string | null>(seedThreads[0]?.id ?? null);
+  const forceDemoMode = isDemoMode();
+  const initialThreads = forceDemoMode ? seedThreads : [];
+  const [threads, setThreads] = useState<Conversation[]>(initialThreads);
+  const [selectedId, setSelectedId] = useState<string | null>(initialThreads[0]?.id ?? null);
   const [draft, setDraft] = useState('');
   const [shareBugCard, setShareBugCard] = useState(false);
   const [searchParams] = useSearchParams();

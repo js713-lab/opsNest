@@ -40,6 +40,7 @@ import {
   getPipelineTemplate,
   savePipelineTemplate
 } from '@/lib/supabase';
+import { isDemoMode } from '@/lib/demo';
 import { AlertCircle, Bell, CalendarClock, Clock, Eye, Folder, GitBranch, Github, Image, Mail, PlayCircle, RefreshCcw, Rocket, Send, Server, TerminalSquare, Wrench, Layers, Settings, BookOpen, Bug, Link2, Tag, FileText, X, ShieldCheck, Save, Copy, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -115,7 +116,7 @@ const ProjectDetailPage = () => {
     tags: '',
     contactEmail: '',
   });
-  const forceDemoMode = import.meta.env.VITE_DEMO_MODE === 'true' || id === 'demo';
+  const forceDemoMode = isDemoMode();
   const sdlcBlueprint = useMemo(() => {
     const template: { id: SdlcStepKey; name: string; summary: string; outputs: string }[] = [
       {
@@ -454,10 +455,9 @@ const ProjectDetailPage = () => {
           setPipelineOrder(pipelineTemplate.stages);
         }
       } catch (err) {
-        console.warn('Demo mode enabled. Reason:', err);
-        setIsDemo(true);
-        setError('Demo mode: connect Supabase auth to persist changes.');
-        seedDemo(id);
+        console.warn('Project load failed:', err);
+        setError('Connect Supabase auth to load this project.');
+        setIsDemo(false);
       } finally {
         setLoading(false);
       }
@@ -968,7 +968,7 @@ const ProjectDetailPage = () => {
       title: finding?.title || 'Submit issue to marketplace',
       severity: finding?.severity || 'medium',
       category: finding?.source || 'Bug',
-      repoUrl: project ? `https://github.com/${project.name}` : '',
+      repoUrl: project?.repository_url || '',
       branch: finding?.branch || branch,
       commitSha: '',
       cronRef: finding?.cronRef || '',
@@ -1194,16 +1194,16 @@ const ProjectDetailPage = () => {
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-col gap-2">
-        <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
             <p className="text-xs uppercase tracking-wide text-muted-foreground">Project</p>
             <h1 className="text-3xl font-bold">{project.name}</h1>
             {project.description && <p className="text-muted-foreground">{project.description}</p>}
           </div>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => navigate('/dashboard/projects')}>Back</Button>
-            <Button className="bg-black text-white hover:bg-slate-900" onClick={handleCreateRun}><PlayCircle className="mr-2 h-4 w-4" /> Run pipeline</Button>
+          <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
+            <Button variant="outline" className="w-full sm:w-auto" onClick={() => navigate('/dashboard/projects')}>Back</Button>
+            <Button className="w-full sm:w-auto bg-black text-white hover:bg-slate-900" onClick={handleCreateRun}><PlayCircle className="mr-2 h-4 w-4" /> Run pipeline</Button>
           </div>
         </div>
         {error && (
@@ -1219,7 +1219,7 @@ const ProjectDetailPage = () => {
         next.set('tab', val);
         setSearchParams(next, { replace: true });
       }} className="space-y-6">
-        <TabsList className="sticky top-[56px] z-20 w-full grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 bg-white shadow-sm border border-border/80 rounded-none p-3 min-h-[64px] items-center">
+        <TabsList className="sticky top-[56px] z-20 w-full grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-2 bg-white shadow-sm border border-border/80 rounded-none p-3 min-h-[64px] items-center overflow-x-auto">
           {tabs.map(tab => (
             <TabsTrigger
               key={tab.id}
@@ -1236,7 +1236,7 @@ const ProjectDetailPage = () => {
         </TabsList>
 
         <TabsContent value="overview">
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
             <InfoCard title="Branch" value={project.branch || 'main'} icon={<GitBranch size={16} />} />
             <InfoCard title="Status" value={project.status} icon={<Rocket size={16} />} />
             <InfoCard title="Last deploy" value={project.last_deploy_at ? new Date(project.last_deploy_at).toLocaleString() : 'Never'} icon={<Clock size={16} />} />
@@ -1946,8 +1946,8 @@ const ProjectDetailPage = () => {
                 <div className="font-semibold text-sm flex items-center gap-2"><Github size={14} /> Demo codebases</div>
                 <div className="grid sm:grid-cols-2 gap-2">
                   {[
-                    { name: 'opsnest/frontend', branch: 'main', status: 'Completed', lastIndexed: 'Today 10:15', files: '1,420 files', images: '58 images', repoUrl: 'https://github.com/js713-lab/opsNest-frontend', primary: 'Next.js + Tailwind' },
-                    { name: 'opsnest/backend', branch: 'develop', status: 'Completed', lastIndexed: 'Today 09:42', files: '980 files', images: '21 images', repoUrl: 'https://github.com/js713-lab/opsNest-backend', primary: 'Node.js + Supabase' },
+                    { name: 'opsnest/frontend', branch: 'main', status: 'Completed', lastIndexed: 'Today 10:15', files: '1,420 files', images: '58 images', repoUrl: 'https://github.com/your-org/opsnest-frontend', primary: 'Next.js + Tailwind' },
+                    { name: 'opsnest/backend', branch: 'develop', status: 'Completed', lastIndexed: 'Today 09:42', files: '980 files', images: '21 images', repoUrl: 'https://github.com/your-org/opsnest-backend', primary: 'Node.js + Supabase' },
                   ].map((demo) => (
                     <div key={demo.name} className="rounded-md border border-border bg-background p-2 text-xs space-y-1">
                       <div className="flex items-center justify-between gap-2">

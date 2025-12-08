@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import { Input } from '@/components/ui/Input';
 import { createProject, listProjects, Project, supabase } from '@/lib/supabase';
 import { fetchGithubRepos, getGithubToken, GithubRepo } from '@/lib/github';
+import { isDemoMode } from '@/lib/demo';
 
 const ProjectsPage = () => {
   const navigate = useNavigate();
@@ -13,8 +14,8 @@ const ProjectsPage = () => {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isDemoMode, setIsDemoMode] = useState(false);
-  const forceDemoMode = import.meta.env.VITE_DEMO_MODE === 'true';
+  const [isDemoModeEnabled, setIsDemoModeEnabled] = useState(false);
+  const forceDemoMode = isDemoMode();
   const [form, setForm] = useState({
     name: '',
     description: '',
@@ -62,7 +63,7 @@ const ProjectsPage = () => {
     ]), []);
 
   const loadDemoProjects = useCallback(() => {
-    setIsDemoMode(true);
+    setIsDemoModeEnabled(true);
     setError('Demo mode: connect Supabase auth to persist projects.');
     const local = readLocalProjects();
     setProjects(local.length > 0 ? local : demoProjects);
@@ -70,23 +71,27 @@ const ProjectsPage = () => {
 
   useEffect(() => {
     const load = async () => {
-      if (forceDemoMode) {
-        loadDemoProjects();
-        setLoading(false);
-        return;
-      }
-
       try {
-        const data = await listProjects();
-        // If Supabase is reachable but empty, still seed demo for a better first-run experience
-        if (data.length === 0) {
+        if (forceDemoMode) {
           loadDemoProjects();
+          setLoading(false);
+          return;
+        }
+
+        const data = await listProjects();
+        if (data.length === 0) {
+          setProjects([]);
         } else {
           setProjects(data);
         }
       } catch (err) {
-        console.warn('Falling back to demo data. Reason:', err);
-        loadDemoProjects();
+        console.warn('Projects load failed:', err);
+        setError('Connect Supabase auth to persist projects.');
+        if (forceDemoMode) {
+          loadDemoProjects();
+        } else {
+          setProjects([]);
+        }
       } finally {
         setLoading(false);
       }
@@ -103,10 +108,10 @@ const ProjectsPage = () => {
     try {
       const { data: auth } = await supabase.auth.getUser();
       const noUser = !auth?.user;
-      const useDemo = isDemoMode || forceDemoMode || noUser;
+      const useDemo = forceDemoMode || isDemoModeEnabled || noUser;
 
-      if (noUser && !isDemoMode) {
-        setIsDemoMode(true);
+      if (noUser && !isDemoModeEnabled && !forceDemoMode) {
+        setIsDemoModeEnabled(true);
         setError('Demo mode: connect Supabase auth to persist projects.');
       }
 
@@ -177,7 +182,7 @@ const ProjectsPage = () => {
 
   return (
     <div className="space-y-8">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-3xl font-bold tracking-tight">Projects</h2>
           <p className="text-muted-foreground">Manage your development projects and workflows</p>
@@ -189,7 +194,7 @@ const ProjectsPage = () => {
         </div>
         <Button
           onClick={() => setIsCreateModalOpen(true)}
-          className="bg-primary text-primary-foreground shadow-sm shadow-primary/30 hover:bg-primary/90 border border-primary/60"
+          className="w-full sm:w-auto bg-primary text-primary-foreground shadow-sm shadow-primary/30 hover:bg-primary/90 border border-primary/60"
         >
           <Plus className="mr-2 h-4 w-4" /> Create project
         </Button>
@@ -206,7 +211,7 @@ const ProjectsPage = () => {
           </Button>
         </div>
       ) : (
-        <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
           <button
             type="button"
             onClick={() => setIsCreateModalOpen(true)}

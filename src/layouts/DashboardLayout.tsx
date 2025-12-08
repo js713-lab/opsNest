@@ -25,6 +25,7 @@ import {
 import { Button } from '@/components/ui/Button';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
+import { isDemoMode } from '@/lib/demo';
 
 const sidebarItems = [
   { icon: LayoutDashboard, label: 'Overview', path: '/dashboard' },
@@ -42,6 +43,7 @@ const DashboardLayout = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isDark, setIsDark] = useState(false);
+  const [demoMode, setDemoModeState] = useState<boolean>(isDemoMode());
   const [showNotifications, setShowNotifications] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [hoveredItem, setHoveredItem] = useState<{ label: string, top: number } | null>(null);
@@ -54,6 +56,23 @@ const DashboardLayout = () => {
   const profileHoverTimeout = useRef<number | null>(null);
   const notificationsRef = useRef<HTMLDivElement | null>(null);
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
+  const forceDemoMode = isDemoMode();
+  const notifications = forceDemoMode
+    ? [
+        {
+          id: 'n-1',
+          title: 'Deployment Successful',
+          body: 'Production deployment completed 2m ago',
+          color: 'bg-blue-500'
+        },
+        {
+          id: 'n-2',
+          title: 'Test Suite Failed',
+          body: "E2E tests failed on branch 'feature/auth'",
+          color: 'bg-yellow-500'
+        }
+      ]
+    : [];
 
   useEffect(() => {
     if (document.documentElement.classList.contains('dark')) {
@@ -301,7 +320,24 @@ const DashboardLayout = () => {
                 Unlock unlimited scans, log retention, and priority pipelines.
               </p>
               <div className="flex items-center gap-2">
-                <Button size="sm" className="bg-black text-white hover:bg-slate-900 w-full">Upgrade</Button>
+                <Button
+                  size="sm"
+                  className="bg-black text-white hover:bg-slate-900 w-full"
+                >
+                  Upgrade
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => {
+                    const next = !demoMode;
+                    localStorage.setItem('opsnest_demo_mode', next ? 'true' : 'false');
+                    setDemoModeState(next);
+                  }}
+                >
+                  {demoMode ? 'Back' : 'Demo'}
+                </Button>
               </div>
             </div>
           </div>
@@ -382,6 +418,11 @@ const DashboardLayout = () => {
                  className="h-9 w-64 rounded-md border border-input bg-background pl-9 pr-4 text-sm outline-none focus:ring-1 focus:ring-ring"
                />
              </div>
+             {demoMode && (
+               <span className="px-2 py-1 text-[11px] font-semibold uppercase border border-amber-400 bg-amber-50 text-amber-700 rounded-none">
+                 Demo
+               </span>
+             )}
              <div className="relative" ref={notificationsRef}>
                <Button 
                  variant="ghost" 
@@ -390,7 +431,7 @@ const DashboardLayout = () => {
                  onClick={() => setShowNotifications(!showNotifications)}
                >
                  <Bell size={20} />
-                 <span className="absolute top-2 right-2 h-2 w-2 rounded-full bg-red-500" />
+                 {notifications.length > 0 && <span className="absolute top-2 right-2 h-2 w-2 rounded-full bg-red-500" />}
                </Button>
                
                {/* Notifications Dropdown */}
@@ -398,32 +439,37 @@ const DashboardLayout = () => {
                  <div className="absolute right-0 top-full mt-2 w-80 rounded-md border border-border bg-white dark:bg-slate-900 p-4 shadow-md z-50 animate-in fade-in zoom-in-95 duration-200">
                    <div className="flex items-center justify-between mb-4">
                      <h4 className="font-semibold text-sm">Notifications</h4>
-                     <span className="text-xs text-muted-foreground">2 new</span>
+                     <span className="text-xs text-muted-foreground">
+                       {notifications.length > 0 ? `${notifications.length} new` : 'No new alerts'}
+                     </span>
                    </div>
-                   <div className="space-y-3">
-                     <div className="flex gap-3 text-sm">
-                       <div className="h-2 w-2 mt-1.5 rounded-full bg-blue-500 flex-shrink-0" />
-                       <div>
-                         <p className="font-medium">Deployment Successful</p>
-                         <p className="text-xs text-muted-foreground mt-1">Production deployment completed 2m ago</p>
-                       </div>
+                   {notifications.length === 0 ? (
+                     <div className="text-sm text-muted-foreground py-4 text-center">
+                       No notifications yet. Connect backend to surface alerts.
                      </div>
-                     <div className="flex gap-3 text-sm">
-                       <div className="h-2 w-2 mt-1.5 rounded-full bg-yellow-500 flex-shrink-0" />
-                       <div>
-                         <p className="font-medium">Test Suite Failed</p>
-                         <p className="text-xs text-muted-foreground mt-1">E2E tests failed on branch 'feature/auth'</p>
+                   ) : (
+                     <>
+                       <div className="space-y-3">
+                         {notifications.map((note) => (
+                           <div key={note.id} className="flex gap-3 text-sm">
+                             <div className={`h-2 w-2 mt-1.5 rounded-full ${note.color} flex-shrink-0`} />
+                             <div>
+                               <p className="font-medium">{note.title}</p>
+                               <p className="text-xs text-muted-foreground mt-1">{note.body}</p>
+                             </div>
+                           </div>
+                         ))}
                        </div>
-                     </div>
-                   </div>
-                   <div className="mt-4 pt-3 border-t border-border flex items-center justify-between">
-                     <Button variant="ghost" size="sm" className="px-3 py-1 h-auto text-xs">
-                       Mark all as read
-                     </Button>
-                     <Link to="/dashboard/notifications" className="text-xs font-semibold text-primary hover:underline">
-                       View all
-                     </Link>
-                   </div>
+                       <div className="mt-4 pt-3 border-t border-border flex items-center justify-between">
+                         <Button variant="ghost" size="sm" className="px-3 py-1 h-auto text-xs">
+                           Mark all as read
+                         </Button>
+                         <Link to="/dashboard/notifications" className="text-xs font-semibold text-primary hover:underline">
+                           View all
+                         </Link>
+                       </div>
+                     </>
+                   )}
                  </div>
                )}
              </div>

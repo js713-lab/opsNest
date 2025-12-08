@@ -468,15 +468,15 @@ const LandingPage = () => {
         <div className="relative z-10 w-full text-slate-900 border-t border-slate-200 pb-64 bg-slate-100">
         
         {/* Section 2: Visual SDLC */}
-        <section id="about" className="min-h-screen flex flex-col items-center justify-center px-6 md:px-12 lg:px-24 py-20 border-b border-slate-100 bg-white reveal" ref={setRevealRef}>
+        <section id="about" className="min-h-screen flex flex-col items-center justify-center px-4 sm:px-6 md:px-12 lg:px-24 py-16 sm:py-20 border-b border-slate-100 bg-white reveal" ref={setRevealRef}>
           <div className="w-full max-w-6xl space-y-6">
-            <div className="grid gap-12 lg:grid-cols-[1.1fr_0.9fr] items-start text-center lg:text-left">
+            <div className="grid gap-10 lg:gap-12 lg:grid-cols-[1.1fr_0.9fr] items-start text-center lg:text-left">
               <div className="space-y-6 lg:pr-6">
                 <p className="text-sm uppercase tracking-[0.25em] text-slate-500 font-bold">Visual SDLC</p>
                 <h2 className="sr-only">Plan → Design → Code → Build → Test → Deploy → Monitor</h2>
                 <div className="flex justify-center lg:justify-start">
                   <div
-                    className="relative w-[320px] h-[320px] md:w-[380px] md:h-[380px]"
+                    className="relative w-[240px] h-[240px] sm:w-[300px] sm:h-[300px] md:w-[360px] md:h-[360px]"
                     style={{ animation: 'sdlc-rotate 18s linear infinite' }}
                   >
                     {sdlcBalls.map((ball, idx) => {
@@ -485,10 +485,10 @@ const LandingPage = () => {
                         <div
                           key={idx}
                           className="absolute left-1/2 top-1/2"
-                          style={{ transform: `translate(-50%, -50%) rotate(${angle}deg) translateX(150px)` }}
+                          style={{ transform: `translate(-50%, -50%) rotate(${angle}deg) translateX(120px)` }}
                         >
                           <div
-                            className="relative w-16 h-16 md:w-20 md:h-20 rounded-full bg-slate-900/95 border border-white/10 shadow-[0_10px_30px_rgba(0,0,0,0.45)] overflow-hidden"
+                            className="relative w-14 h-14 sm:w-16 sm:h-16 md:w-20 md:h-20 rounded-full bg-slate-900/95 border border-white/10 shadow-[0_10px_30px_rgba(0,0,0,0.45)] overflow-hidden"
                             style={{ boxShadow: `0 0 34px ${ball.glow}` }}
                           >
                             <div
@@ -503,7 +503,7 @@ const LandingPage = () => {
                               style={{ background: `radial-gradient(circle, ${ball.glow} 0%, transparent 70%)` }}
                             />
                             <div
-                              className={`absolute left-1/2 top-1/2 w-[150%] h-[3px] md:h-[4px] origin-center -translate-x-1/2 -translate-y-1/2 rotate-[18deg] bg-gradient-to-r ${ball.lineGradient}`}
+                              className={`absolute left-1/2 top-1/2 w-[140%] h-[3px] md:h-[4px] origin-center -translate-x-1/2 -translate-y-1/2 rotate-[18deg] bg-gradient-to-r ${ball.lineGradient}`}
                               style={{ boxShadow: `0 0 12px ${ball.glow}` }}
                             />
                             <div
@@ -518,22 +518,22 @@ const LandingPage = () => {
                     })}
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4 text-sm text-slate-700 mt-8">
-                  <div className="rounded-none border border-slate-200 p-4 bg-slate-50 shadow-sm hover:shadow-md transition-shadow">Stage statuses + approvals</div>
-                  <div className="rounded-none border border-slate-200 p-4 bg-slate-50 shadow-sm hover:shadow-md transition-shadow">Attached scripts per stage</div>
-                  <div className="rounded-none border border-slate-200 p-4 bg-slate-50 shadow-sm hover:shadow-md transition-shadow">Real-time deploy/test signals</div>
-                  <div className="rounded-none border border-slate-200 p-4 bg-slate-50 shadow-sm hover:shadow-md transition-shadow">Monitor health after ship</div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 text-sm text-slate-700 mt-8">
+                  <div className="rounded-none border border-slate-200 p-4 bg-slate-50 shadow-sm hover:shadow-md transition-shadow text-left">Stage statuses + approvals</div>
+                  <div className="rounded-none border border-slate-200 p-4 bg-slate-50 shadow-sm hover:shadow-md transition-shadow text-left">Attached scripts per stage</div>
+                  <div className="rounded-none border border-slate-200 p-4 bg-slate-50 shadow-sm hover:shadow-md transition-shadow text-left">Real-time deploy/test signals</div>
+                  <div className="rounded-none border border-slate-200 p-4 bg-slate-50 shadow-sm hover:shadow-md transition-shadow text-left">Monitor health after ship</div>
                 </div>
               </div>
               <div className="flex flex-col items-center lg:items-start w-full">
-                <div className="rounded-none border border-slate-200 bg-white p-6 md:p-8 space-y-6 shadow-lg h-auto mx-auto flex flex-col justify-center">
+                <div className="rounded-none border border-slate-200 bg-white p-6 md:p-8 space-y-6 shadow-lg h-auto mx-auto flex flex-col justify-center w-full">
                   <h3 className="text-2xl font-bold text-slate-900">Feature checklist</h3>
-                  <div className="overflow-x-auto pb-2 snap-x snap-mandatory">
-                    <div className="grid grid-rows-2 grid-flow-col auto-cols-[200px] md:auto-cols-[230px] gap-4">
+                  <div className="overflow-x-auto pb-3 snap-x snap-mandatory w-full">
+                    <div className="grid grid-cols-1 sm:grid-rows-2 sm:grid-flow-col auto-cols-[220px] sm:auto-cols-[200px] md:auto-cols-[230px] gap-3 sm:gap-4">
                       {featureCards.map((card, idx) => (
                         <div
                           key={card.title}
-                          className="relative rounded-none border border-slate-200 bg-gradient-to-br from-white via-white to-slate-50 shadow-[0_12px_28px_rgba(0,0,0,0.06)] px-5 py-5 flex flex-col gap-2 w-[200px] md:w-[230px] snap-start"
+                          className="relative rounded-none border border-slate-200 bg-gradient-to-br from-white via-white to-slate-50 shadow-[0_12px_28px_rgba(0,0,0,0.06)] px-5 py-5 flex flex-col gap-2 min-w-[220px] sm:min-w-[200px] md:min-w-[230px] snap-start"
                         >
                           <div className="absolute top-3 right-3 text-[10px] font-semibold text-amber-700 bg-amber-100/70 rounded-full px-2 py-1">
                             {idx + 1}

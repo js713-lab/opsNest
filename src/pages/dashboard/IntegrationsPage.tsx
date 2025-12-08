@@ -130,33 +130,32 @@ const IntegrationsPage = () => {
   }, []);
 
   const fetchIntegrations = async (uid: string | null = userId, email: string | null = userEmail) => {
-    // In a real app, we would get the current user's ID
-    // For this demo, we'll just fetch all configs or mock it if table doesn't exist yet
-    try {
-      const query = supabase.from('integrations_config').select('*');
-      const { data, error } = uid ? await query.eq('user_id', uid) : await query;
-
-      if (data) {
-        setIntegrations(prev => prev.map(integration => {
-          const config = data.find((d: any) => d.provider === integration.id);
-          const allowEnv = integration.id === 'anthropic' || integration.id === 'github'
-            ? (email || '').toLowerCase() === 'js07ink@gmail.com'
-            : true;
-          const envKey = allowEnv ? ENV_DEFAULTS[integration.id] : undefined;
-          const mergedConfig = config ? config.config : integration.config;
-          const withEnvKey = envKey ? { ...(mergedConfig || {}), apiKey: envKey } : mergedConfig;
-          const connected = config?.is_active || Boolean(envKey);
-          return (config || envKey)
-            ? { ...integration, connected, config: withEnvKey }
-            : integration;
-        }));
-        return;
+    // Only fetch configs scoped to the current user to avoid cross-user leakage
+    if (uid) {
+      try {
+        const { data } = await supabase.from('integrations_config').select('*').eq('user_id', uid);
+        if (data) {
+          setIntegrations(prev => prev.map(integration => {
+            const config = data.find((d: any) => d.provider === integration.id);
+            const allowEnv = integration.id === 'anthropic' || integration.id === 'github'
+              ? (email || '').toLowerCase() === 'js07ink@gmail.com'
+              : true;
+            const envKey = allowEnv ? ENV_DEFAULTS[integration.id] : undefined;
+            const mergedConfig = config ? config.config : integration.config;
+            const withEnvKey = envKey ? { ...(mergedConfig || {}), apiKey: envKey } : mergedConfig;
+            const connected = config?.is_active || Boolean(envKey);
+            return (config || envKey)
+              ? { ...integration, connected, config: withEnvKey }
+              : integration;
+          }));
+          return;
+        }
+      } catch (e) {
+        console.log("Table might not exist yet or network error");
       }
-    } catch (e) {
-      console.log("Table might not exist yet or network error");
     }
 
-    // Fallback: try localStorage cache
+    // Fallback: try localStorage cache (per-browser)
     const localConfigs = readLocalConfigs();
     if (localConfigs.length > 0) {
       setIntegrations(prev =>

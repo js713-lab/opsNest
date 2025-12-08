@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Github, CheckCircle2, ArrowRight, Search, ShieldCheck, ListChecks, Sparkles } from 'lucide-react';
 import { buildGithubAuthUrl, fetchGithubRepos, getGithubToken, GithubRepo } from '@/lib/github';
+import { isDemoMode } from '@/lib/demo';
 
 type Step = 1 | 2 | 3;
 
@@ -12,18 +13,19 @@ type Props = {
 };
 
 const demoRepos: GithubRepo[] = [
-  { id: 1, name: 'kampungCameron', full_name: 'js713/kampungCameron', default_branch: 'main', html_url: 'https://github.com/js713/kampungCameron', owner: { login: 'js713' } },
-  { id: 2, name: 'htmlPersonalWebsites', full_name: 'js713/htmlPersonalWebsites', default_branch: 'main', html_url: 'https://github.com/js713/htmlPersonalWebsites', owner: { login: 'js713' } },
-  { id: 3, name: 'garageManagementSystem', full_name: 'js713/garageManagementSystem', default_branch: 'main', html_url: 'https://github.com/js713/garageManagementSystem', owner: { login: 'js713' } },
-  { id: 4, name: 'ibuNiaga_crmSystem', full_name: 'js713/ibuNiaga_crmSystem', default_branch: 'main', html_url: 'https://github.com/js713/ibuNiaga_crmSystem', owner: { login: 'js713' } },
-  { id: 5, name: 'linkSphere', full_name: 'js713/linkSphere', default_branch: 'main', html_url: 'https://github.com/js713/linkSphere', owner: { login: 'js713' } },
-  { id: 6, name: 'portfolio_website', full_name: 'js713/portfolio_website', default_branch: 'main', html_url: 'https://github.com/js713/portfolio_website', owner: { login: 'js713' } },
+  { id: 1, name: 'workspace-api', full_name: 'your-org/workspace-api', default_branch: 'main', html_url: 'https://github.com/your-org/workspace-api', owner: { login: 'your-org' } },
+  { id: 2, name: 'customer-portal', full_name: 'your-org/customer-portal', default_branch: 'main', html_url: 'https://github.com/your-org/customer-portal', owner: { login: 'your-org' } },
+  { id: 3, name: 'ops-automation', full_name: 'your-org/ops-automation', default_branch: 'main', html_url: 'https://github.com/your-org/ops-automation', owner: { login: 'your-org' } },
+  { id: 4, name: 'data-pipeline', full_name: 'your-org/data-pipeline', default_branch: 'main', html_url: 'https://github.com/your-org/data-pipeline', owner: { login: 'your-org' } },
+  { id: 5, name: 'mobile-app', full_name: 'your-org/mobile-app', default_branch: 'main', html_url: 'https://github.com/your-org/mobile-app', owner: { login: 'your-org' } },
+  { id: 6, name: 'design-system', full_name: 'your-org/design-system', default_branch: 'main', html_url: 'https://github.com/your-org/design-system', owner: { login: 'your-org' } },
 ];
 
 const GettingStartedPage: React.FC<Props> = ({ onComplete }) => {
   const navigate = useNavigate();
+  const demoMode = isDemoMode();
   const [githubConnected, setGithubConnected] = useState<boolean>(() => Boolean(getGithubToken()));
-  const [repos, setRepos] = useState<GithubRepo[]>(demoRepos);
+  const [repos, setRepos] = useState<GithubRepo[]>(demoMode ? demoRepos : []);
   const [loadingRepos, setLoadingRepos] = useState(false);
   const [selectedRepos, setSelectedRepos] = useState<number[]>([]);
   const [search, setSearch] = useState('');
@@ -51,16 +53,16 @@ const GettingStartedPage: React.FC<Props> = ({ onComplete }) => {
 
   useEffect(() => {
     if (!githubConnected) {
-      setRepos(demoRepos);
+      setRepos(demoMode ? demoRepos : []);
       setSelectedRepos([]);
       setError(null);
     }
-  }, [githubConnected]);
+  }, [githubConnected, demoMode]);
 
   useEffect(() => {
     const token = getGithubToken();
     if (!token) {
-      setRepos(demoRepos);
+      setRepos(demoMode ? demoRepos : []);
       return;
     }
 
@@ -68,18 +70,23 @@ const GettingStartedPage: React.FC<Props> = ({ onComplete }) => {
       setLoadingRepos(true);
       try {
         const data = await fetchGithubRepos(token);
-        setRepos(data.length > 0 ? data : demoRepos);
+        setRepos(data.length > 0 ? data : demoMode ? demoRepos : []);
         setError(null);
       } catch (e: any) {
-        console.warn('Falling back to demo repos', e);
-        setRepos(demoRepos);
-        setError('Using demo repos because GitHub data was not reachable.');
+        console.warn('Falling back due to GitHub fetch error', e);
+        if (demoMode) {
+          setRepos(demoRepos);
+          setError('Using demo repos because GitHub data was not reachable.');
+        } else {
+          setRepos([]);
+          setError('Connect GitHub to load repositories.');
+        }
       } finally {
         setLoadingRepos(false);
       }
     };
     load();
-  }, [githubConnected]);
+  }, [githubConnected, demoMode]);
 
   const filteredRepos = useMemo(() => {
     const q = search.toLowerCase();
@@ -216,7 +223,9 @@ const GettingStartedPage: React.FC<Props> = ({ onComplete }) => {
             {loadingRepos ? (
               <p className="text-sm text-muted-foreground px-2">Loading repositories from GitHub...</p>
             ) : filteredRepos.length === 0 ? (
-              <p className="text-sm text-muted-foreground px-2">No repositories match your search.</p>
+              <p className="text-sm text-muted-foreground px-2">
+                {demoMode ? 'No repositories match your search.' : 'Connect GitHub to list your repositories.'}
+              </p>
             ) : (
               <div className="grid gap-2 md:grid-cols-2">
                 {filteredRepos.map((repo) => {

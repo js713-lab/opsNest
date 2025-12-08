@@ -44,17 +44,6 @@ const GitHubCallbackPage = () => {
         const token = await exchangeGithubCode(code, redirectUri);
         setMessage('GitHub connected. Saving configuration...');
 
-        // Optional: store in Supabase integrations_config for demo
-        try {
-          await supabase.from('integrations_config').upsert({
-            provider: 'github',
-            config: { token },
-            is_active: true,
-          }, { onConflict: 'provider' });
-        } catch (e) {
-          console.warn('Could not store token in Supabase (demo only):', e);
-        }
-
         setMessage('GitHub connected! Redirecting...');
         setTimeout(() => navigate('/dashboard/integrations'), 1200);
       } catch (err: any) {
