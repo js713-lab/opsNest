@@ -5,7 +5,7 @@ import './index.css'
 import './i18n'; // We'll create this next
 
 // Bundle version to force clients to refresh and drop old service worker caches
-const BUNDLE_VERSION = 'opsnest-20250215';
+const BUNDLE_VERSION = 'opsnest-20250216';
 const versionKey = 'opsnest_bundle_version';
 const storedVersion = localStorage.getItem(versionKey);
 if (storedVersion !== BUNDLE_VERSION) {
