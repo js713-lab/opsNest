@@ -188,3 +188,4 @@ The Vibe Coding movement is open to everyone.
 ## 📄 License
 
 MIT License.
+
